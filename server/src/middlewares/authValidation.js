@@ -1,7 +1,10 @@
 import { check } from "express-validator";
 import {
   findUserByUsername,
+  findUserByEmail,
 } from "../services/user.service.js";
+import lodash from "lodash";
+const { isNil } = lodash;
 
 export const isValidUsernameLength = [
   check("username")
@@ -41,6 +44,22 @@ export const isUsernameExist = [
     const user = await findUserByUsername(value);
     if (user) {
       return Promise.reject("Username already exists");
+    }
+    return true;
+  }),
+  (req, res, next) => {
+    next();
+  },
+];
+
+export const isEmailExist = [
+  check("email").custom(async (value) => {
+    if (isNil(value)) {
+      return true;
+    }
+    const user = await findUserByEmail(value);
+    if (!isNil(user)) {
+      return Promise.reject("Email already exists");
     }
     return true;
   }),

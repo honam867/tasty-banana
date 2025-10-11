@@ -9,6 +9,8 @@ import {
   isConfirmPasswordMatch,
   isMatchPasswordRegex,
   isValidPasswordLength,
+  isEmailExist,
+  isValidEmail,
 } from "../middlewares/authValidation.js";
 import { verifyToken } from "../middlewares/tokenHandler.js";
 import { validate } from "../middlewares/validation.js";
@@ -22,6 +24,8 @@ router.post(ROUTES.LOGIN, isValidPasswordLength, validate, login);
 //register route
 router.post(
   ROUTES.REGISTER,
+  isValidEmail,
+  isEmailExist,
   isValidPasswordLength,
   isMatchPasswordRegex,
   isConfirmPasswordMatch,

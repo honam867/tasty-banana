@@ -56,7 +56,9 @@ export const userFactory = async (overrides = {}) => {
   };
 
   const userData = merge({}, defaultData, overrides);
-  const plainPassword = get(userData, "password");
+  
+  // Support both "password" and "passwordPlain" for plain text password
+  const plainPassword = get(overrides, "passwordPlain") || get(userData, "password");
 
   // Encrypt password before storing
   const encryptedPassword = encryptPassword(plainPassword);

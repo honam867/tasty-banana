@@ -59,8 +59,8 @@
             "id": 5,
             "title": "Implement email validation utility `isEmailExist` and integrate",
             "description": "Create a reusable validator to check if an email already exists in the database using Drizzle. Integrate into registration flow and any endpoints requiring email uniqueness.",
-            "details": "Implementation:\n- Add `isEmailExist(email)` utility in validators/services layer using Drizzle query on `users.email`.\n- Use lodash `get`, `isEmpty`, `isNil` patterns per workspace rules.\n- Wire into `authValidation.js` for register and any update-email endpoints.\n- Add unit tests.\nAcceptance:\n- Duplicate email registration is blocked with 400 and clear message.\n- Unit tests cover existing and non-existing cases.",
-            "status": "pending",
+            "details": "Implementation:\n- Add `isEmailExist(email)` utility in validators/services layer using Drizzle query on `users.email`.\n- Use lodash `get`, `isEmpty`, `isNil` patterns per workspace rules.\n- Wire into `authValidation.js` for register and any update-email endpoints.\n- Add unit tests.\nAcceptance:\n- Duplicate email registration is blocked with 400 and clear message.\n- Unit tests cover existing and non-existing cases.\n<info added on 2025-10-11T12:30:25.316Z>\n- Added isEmailExist validator in server/src/middlewares/authValidation.js using findUserByEmail() (Drizzle query on users.email) and lodash isNil for null checks; follows workspace patterns (lodash get/isNil, no optional chaining).\n- Updated server/src/routes/auth.route.js to include isValidEmail and isEmailExist in the register middleware chain before password validators (order: email format → email uniqueness → password length → password complexity → confirm password).\n- Added tests in server/tests/auth/register.spec.js covering invalid email formats, duplicate email rejection with 400 and \"Email already exists\", successful registration with different emails, and case sensitivity; tests use lodash get() for safe access.\n- Enhanced server/tests/utils/testHelpers.js userFactory to support passwordPlain while retaining password compatibility; passwords encrypted via encryptPassword().\n- All tests passing (2 existing + 4 new).\n- Acceptance met: duplicate email registration blocked with 400 and clear \"Email already exists\" message; tests cover existing and non-existing cases; validator uses Drizzle via findUserByEmail(); adheres to workspace rules and existing error structure.\n- Note: email comparison is currently case-sensitive; consider normalizing emails for case-insensitive uniqueness.\n</info added on 2025-10-11T12:30:25.316Z>",
+            "status": "done",
             "dependencies": [],
             "parentTaskId": 1
           }
@@ -69,7 +69,7 @@
     ],
     "metadata": {
       "created": "2025-10-11T06:58:54.372Z",
-      "updated": "2025-10-11T11:48:25.552Z",
+      "updated": "2025-10-11T12:30:31.530Z",
       "description": "Tag created on 10/11/2025"
     }
   },

@@ -19,16 +19,8 @@ beforeAll(async () => {
 
 /**
  * Clean up after each test - ensures isolation
+ * Note: Cleanup is now handled per test file as needed
  */
-afterEach(async () => {
-  try {
-    // Clean all test data from users table
-    await db.delete(users);
-  } catch (error) {
-    const errorMessage = get(error, "message", "Unknown error");
-    console.error("Failed to clean test data:", errorMessage);
-  }
-});
 
 /**
  * Global test teardown - runs once after all tests
