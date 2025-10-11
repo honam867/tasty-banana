@@ -35,7 +35,14 @@ export const findUserByUsername = async (username) => {
  */
 export const findUserByEmail = async (email) => {
   const result = await db
-    .select()
+    .select({
+      id: users.id,
+      username: users.username,
+      password: users.password,
+      email: users.email,
+      role: users.role,
+      status: users.status,
+    })
     .from(users)
     .where(eq(users.email, email))
     .limit(1);
@@ -96,27 +103,27 @@ export const getUserForAuth = async (username) => {
  * @param {string} usernameOrEmail - Username or email address
  * @returns {Promise<Object|null>} User with selected fields or null
  */
-export const getUserByUsernameOrEmail = async (usernameOrEmail) => {
-  if (isNil(usernameOrEmail)) {
-    return null;
-  }
+// export const getUserByUsernameOrEmail = async (usernameOrEmail) => {
+//   if (isNil(usernameOrEmail)) {
+//     return null;
+//   }
 
-  const normalized = get(usernameOrEmail, "length")
-    ? usernameOrEmail.toLowerCase()
-    : "";
+//   const normalized = get(usernameOrEmail, "length")
+//     ? usernameOrEmail.toLowerCase()
+//     : "";
 
-  const result = await db
-    .select({
-      id: users.id,
-      username: users.username,
-      password: users.password,
-      email: users.email,
-      role: users.role,
-      status: users.status,
-    })
-    .from(users)
-    .where(or(eq(users.username, normalized), eq(users.email, normalized)))
-    .limit(1);
+//   const result = await db
+//     .select({
+//       id: users.id,
+//       username: users.username,
+//       password: users.password,
+//       email: users.email,
+//       role: users.role,
+//       status: users.status,
+//     })
+//     .from(users)
+//     .where(or(eq(users.username, normalized), eq(users.email, normalized)))
+//     .limit(1);
 
-  return result[0] || null;
-};
+//   return result[0] || null;
+// };

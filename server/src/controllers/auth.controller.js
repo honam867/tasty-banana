@@ -3,10 +3,10 @@ import jsonwebtoken from "jsonwebtoken";
 import nodemailer from "nodemailer";
 import {
   getUserForAuth,
-  getUserByUsernameOrEmail,
   findUserByUsername,
   createUser,
   updateUserPassword,
+  findUserByEmail,
 } from "../services/user.service.js";
 import {
   HTTP_STATUS,
@@ -20,8 +20,7 @@ export const login = async (req, res) => {
   const { username, password, remember } = req.body;
   try {
     // Find user by username or email
-    const user = await getUserByUsernameOrEmail(username);
-    console.log("❤️ ~ login ~ user:", user);
+    const user = await findUserByEmail(username);
 
     if (!user) {
       return sendWarning(res, "Invalid username/email or password");
@@ -78,7 +77,6 @@ export const register = async (req, res) => {
 
     // Generate username from email (part before @)
     const username = email.split("@")[0].toLowerCase();
-    console.log("❤️ ~ register ~ username:", username);
 
     const newUser = await createUser({
       username,
@@ -138,14 +136,14 @@ export const changePassword = async (req, res) => {
 
 //[POST] resetPassword
 export const resetPassword = async (req, res) => {
-  const { email, username } = req.body;
+  const { email } = req.body;
   try {
     //Check username is Exist
-    const isUserExist = await findUserByUsername(username);
-    if (!isUserExist) return sendWarning(res, "Username does not exist");
+    const user = await findUserByEmail(email);
+    if (!user) return sendWarning(res, "Username does not exist");
 
     //check email
-    if (isUserExist.email !== email) return sendWarning(res, "Email wrong");
+    if (user.email !== email) return sendWarning(res, "Email wrong");
 
     //Send new password to user email
     const newPassword = randomPassword(16);
@@ -153,7 +151,7 @@ export const resetPassword = async (req, res) => {
     //Set new Password to server
     const encryptedNewPassword = encryptPassword(newPassword);
     const result = await updateUserPassword(
-      isUserExist.id,
+      user.id,
       encryptedNewPassword.toString()
     );
 
@@ -161,7 +159,7 @@ export const resetPassword = async (req, res) => {
       return sendWarning(res, "Reset password failed");
     } else {
       //Send new password to email
-      const mailContent = setResetPassEmailContent(username, newPassword);
+      const mailContent = setResetPassEmailContent(user.username, newPassword);
       sendEmail(email, "Ecomx password reset", mailContent);
 
       //resturn result
