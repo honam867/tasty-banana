@@ -1,0 +1,168 @@
+# Task ID: 1
+# Title: Implement end-to-end tests for authentication routes (login, register, forgot-password, change-password)
+# Status: pending
+# Dependencies: None
+# Priority: high
+# Description: Create comprehensive automated tests covering success and failure scenarios for all authentication routes, including validation, token generation/verification, OTP handling, and response structure.
+# Details:
+Scope and goals:
+- Build a complete test suite for /api/auth/login, /api/auth/register, /api/auth/forgot-password, and /api/auth/change-password.
+- Cover success paths, validation errors, auth failures, OTP generation/storage checks, and response contracts.
+- Ensure tests are deterministic, isolated, and CI-ready.
+
+Assumptions (adapt to project stack as needed):
+- Node.js/Express API with JWT-based auth.
+- Test runner: Jest (or Mocha) and Supertest for HTTP assertions.
+- Database: Postgres/MySQL/Mongo (use a dedicated test DB/schema). Passwords hashed with bcrypt.
+- OTP storage via Redis or a repository abstraction (to be mocked in tests).
+
+Test environment setup:
+1) Configuration
+- Add a test config: NODE_ENV=test, JWT_SECRET=testing-secret, DB URL to a disposable database/schema, and a mock Redis URL if applicable.
+- Ensure migrations/schemas run before tests.
+- Provide a .env.test and load it in test bootstrap.
+
+2) App bootstrap for tests
+- Export an app factory (createApp) that returns an Express instance with all middlewares and routes.
+- In tests, import app and wrap with Supertest request(app).
+
+3) Data factories and utilities
+- userFactory({ phone, passwordPlain, overrides }) that:
+  - Hashes passwordPlain using the same algorithm as production.
+  - Inserts user into the test DB and returns { id, phone, passwordHash, ... }.
+- cleanup utilities to truncate tables/collections between tests.
+- jwt helpers:
+  - signTestToken(payload, expiry) using JWT_SECRET.
+  - parseJwt for structural assertions.
+- otp mock:
+  - If using Redis, use an in-memory map or ioredis-mock. Expose setOtp(phone, code), getOtp(phone).
+  - Intercept OTP generation function via dependency injection or jest.mock to capture generated code without sending SMS.
+
+4) Test file structure
+- tests/auth/login.spec.[ts|js]
+- tests/auth/register.spec.[ts|js]
+- tests/auth/forgot-password.spec.[ts|js]
+- tests/auth/change-password.spec.[ts|js]
+- tests/setup.ts for global setup/teardown (DB connect, migrate, clear, close).
+
+Route-specific test cases and approach:
+1) Login (POST /api/auth/login)
+- Successful login with valid credentials
+  - Arrange: create user with known phone/password.
+  - Act: POST with correct credentials.
+  - Assert: 200 OK; body contains token, user data; token decodes with correct sub; no password in response.
+- Failed login with invalid password
+  - 401 Unauthorized; error code/message consistent.
+- Failed login with non-existent user
+  - 401 Unauthorized; do not reveal user existence.
+- Password length validation
+  - 400 Bad Request if below min length.
+- Response structure and JWT token generation
+  - Validate fields: { token: string, user: { id, phone, ... } } and token expiry claims.
+
+2) Register (POST /api/auth/register)
+- Successful registration with valid data
+  - 201 Created; user persisted; password hashed; token may be returned per spec.
+- Password length validation
+  - 400 with validation error details.
+- Password regex validation (complexity)
+  - 400 when complexity not met; 201 when met.
+- Confirm password matching
+  - 400 when mismatch.
+- Phone number uniqueness check and duplicate rejection
+  - Pre-insert user; second request returns 409 Conflict (or 400) with clear error.
+
+3) Forgot Password (POST /api/auth/forgot-password)
+- Password reset request with valid phone
+  - 200 OK; OTP generated and stored via mock; response structure verified; rate limiting headers if applicable.
+- Invalid/non-existent phone
+  - 200 or 404/400 per spec; ensure no OTP stored for invalid phone; do not leak user existence if design requires.
+- OTP generation and storage
+  - Assert OTP code format (length, numeric) and TTL set (if available via mock API).
+- Response structure
+  - Validate response fields (e.g., message, correlationId), never include the OTP in response.
+
+4) Change Password (PUT /api/auth/change-password)
+- Successful password change with valid token
+  - Arrange: create user, login to obtain token (or signTestToken), set old password.
+  - Act: PUT with Bearer token, body: { oldPassword, newPassword, confirmPassword }.
+  - Assert: 200 OK; can login with new password; old password no longer works; response omits sensitive fields.
+- Password change without token (unauthorized)
+  - 401 Unauthorized; verify WWW-Authenticate header if applicable.
+- Password change with invalid token
+  - 401 Unauthorized; distinguish token invalid vs expired if implemented.
+- Password length validation and regex validation
+  - 400 with details.
+- Confirm password matching
+  - 400 error.
+- Old password verification
+  - 400/401 when oldPassword incorrect; ensure password not changed.
+
+Implementation notes:
+- Ensure consistent error shape across endpoints (status, code, message, fieldErrors[]). Centralize a toMatchErrorShape helper.
+- Ensure DB is cleaned between tests (truncate in a transaction, or use testcontainers for isolation).
+- Time-based assertions: freeze time with jest.useFakeTimers or a clock mock if token expiry/TTL needs checking.
+- Add npm scripts: test, test:watch, test:coverage.
+- Set coverage thresholds for lines/branches to enforce complete coverage of the listed cases.
+
+
+# Test Strategy:
+Execution
+- Pre-req: Test DB reachable, env .env.test configured, migrations runnable.
+- Run: npm run test (or equivalent). In CI, run migrations, then tests with coverage.
+
+Verification checklist
+- Login
+  - Valid credentials return 200 with JWT containing expected claims (sub=userId, iat, exp) and user payload without sensitive fields.
+  - Invalid password and non-existent user both return 401 and do not leak user existence.
+  - Password length validation returns 400 with fieldErrors for password.
+- Register
+  - Valid data returns 201; user exists in DB with hashed password; duplicate phone returns 409 (or project-specific error); validation errors for length/complexity/mismatch return 400 with fieldErrors.
+- Forgot Password
+  - Valid phone returns 200; OTP stored in mock with correct TTL; invalid phone results per spec without OTP creation; response does not include OTP.
+- Change Password
+  - Valid token + correct oldPassword updates hash; subsequent login works only with new password.
+  - Missing/invalid token returns 401; incorrect oldPassword returns appropriate error; validation errors for length/complexity/mismatch return 400.
+
+Quality gates
+- All tests deterministic and isolated (no order dependency).
+- Coverage >= 90% lines and branches for auth route handlers and validators.
+- Lint and type checks pass.
+- CI job executes tests with green status.
+
+# Subtasks:
+## 1. Write E2E tests for Login route (POST /api/auth/login) [pending]
+### Dependencies: None
+### Description: Create a comprehensive end-to-end test suite for /api/auth/login covering success, validation, and authentication failures. Verify JWT generation/claims, response structure, and security (no sensitive fields). Ensure tests are deterministic and isolated.
+### Details:
+Implement tests in tests/auth/login.spec.(ts|js) using Jest and Supertest with the app from createApp(). Use userFactory to seed a user with known phone and password. Validate: 200 on valid credentials; body contains { token, user: { id, phone, ... } } without password; token decodes with correct sub, iat, exp using parseJwt. Assert 401 for invalid password and non-existent user without leaking user existence. Assert 400 for password minimum length and any schema validation errors (e.g., missing phone). Use toMatchErrorShape for error consistency. Freeze time with jest.useFakeTimers for expiry-related checks as needed. Truncate DB and reset OTP/redis mocks between tests via cleanup utilities. Keep tests independent and idempotent.
+
+## 2. Write E2E tests for Register route (POST /api/auth/register) [done]
+### Dependencies: None
+### Description: Implement an end-to-end test suite for /api/auth/register covering successful registration, validation errors, password complexity, confirm password, and phone uniqueness. Verify persistence, hashing, and response contract.
+### Details:
+Create tests in tests/auth/register.spec.(ts|js). Use Supertest with app from createApp(). Validate: 201 on valid data; fetch user from DB to confirm password is hashed (bcrypt) and phone stored; optionally assert token presence/claims if API returns one. Assert 400 for password min length and complexity regex failures; 400 when confirmPassword mismatches; 409 (or 400 per spec) when phone is already registered (pre-insert with userFactory). Ensure consistent error shape via toMatchErrorShape. Clean DB between tests. Avoid leaking sensitive data in responses. Use data-driven test cases to cover multiple password patterns.
+<info added on 2025-10-11T10:31:29.745Z>
+- Implementation completed: tests/auth/register.spec.js created with 23 end-to-end tests covering success, validation errors, password complexity, confirm password, phone uniqueness, required fields, security, and edge cases (mixed-case emails, special characters in names, Vietnamese phone formats, multiple valid password patterns).
+- Test infrastructure added: jest.config.js (ESM, coverage 80%), tests/setup.js (global setup/teardown, DB cleanup), tests/utils/appFactory.js (Express app factory), tests/utils/testHelpers.js (lodash-based helpers), tests/README.md (setup/run docs), .env.test.example, .gitignore updated to exclude .env.test.
+- Utilities implemented (lodash only): userFactory(overrides), encryptPassword(password) using production CryptoJS approach, generateTestToken(userId, remember), parseJwt(token), expectErrorShape(response, status), expectSuccessShape(response, status), generateValidPhone(), expectValidToken(token, userId).
+- Assertions include: 201 on valid registration with username generation from email, DB persistence verification with encrypted (non-plain) password and stored phone, token presence and claims validation (id, iat, exp, future expiry), 400 for password length/complexity and confirmPassword mismatch, 409 (or per spec) for duplicate phone, required field validation, consistent error/success shapes, and no sensitive fields in responses.
+- Vietnamese phone support validated across prefixes (e.g., 032, 056, 070, 081, 090) via generateValidPhone().
+- Project rules followed: lodash utilities, no optional chaining or nullish coalescing, ES6+ with async/await, explicit try-catch error handling, AAA test pattern, descriptive assertions.
+- Package scripts updated: test (Jest ESM), test:watch, test:coverage, test:register (runs only register specs).
+- Setup to run: create test DB (e.g., tasty_banana_test), copy .env.test.example to .env.test with real credentials, run migrations, then npm test or npm run test:register.
+- Expected outcome: all 23 tests pass with response contract validation, DB persistence and password encryption checks (stored value length > 20), valid JWT claims, no sensitive data leaks, and full test isolation via automatic DB cleanup after each test.
+</info added on 2025-10-11T10:31:29.745Z>
+
+## 3. Write E2E tests for Forgot Password route (POST /api/auth/forgot-password) [pending]
+### Dependencies: None
+### Description: Build E2E tests for /api/auth/forgot-password verifying OTP generation, storage, TTL, response structure, and behavior for valid and invalid phones. Ensure no leakage of user existence and no OTP exposure in responses.
+### Details:
+Place tests in tests/auth/forgot-password.spec.(ts|js). Mock OTP repository/Redis via in-memory map or ioredis-mock. Expose setOtp/getOtp helpers to assert storage and TTL. Validate: for an existing phone, 200 OK with generic message; OTP generated with correct format (e.g., 6-digit numeric) and stored with TTL; response never contains OTP. For non-existent/invalid phone, follow spec (200 or 4xx): ensure no OTP stored and no user existence leak. Optionally assert rate-limit headers if implemented. Use dependency injection or jest.mock to intercept OTP generation without sending SMS. Cleanup OTP store and DB between tests.
+
+## 4. Write E2E tests for Change Password route (PUT /api/auth/change-password) [pending]
+### Dependencies: None
+### Description: Create E2E tests for /api/auth/change-password covering successful password change with valid token, unauthorized scenarios (no/invalid/expired token), validation errors, confirm password mismatch, and incorrect old password handling. Verify login works only with new password.
+### Details:
+Implement tests in tests/auth/change-password.spec.(ts|js). Use userFactory to create a user and set an initial password. Obtain a Bearer token via login or signTestToken helper. Success: PUT with { oldPassword, newPassword, confirmPassword } -> 200 OK; then login with newPassword succeeds and oldPassword fails. Validate response omits sensitive fields. Unauthorized: missing token -> 401 (check WWW-Authenticate header if present); invalid or expired token -> 401 with appropriate code. Validation: enforce password length/complexity and confirmPassword match -> 400 with fieldErrors. Incorrect oldPassword -> 400/401 and ensure stored hash unchanged. Clean DB between tests and freeze time for token expiry checks as needed.
+

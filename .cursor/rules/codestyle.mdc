@@ -1,0 +1,274 @@
+---
+description: Code style guidelines requiring lodash utilities, modern JavaScript patterns, and explicit null handling
+globs: server/src/**/*.js, src/**/*.js, **/*.ts
+alwaysApply: true
+---
+
+- **Lodash Requirement:**
+  - Always use lodash utility functions for data manipulation and access
+  - Import specific lodash functions at the top of each file
+  - Prefer lodash methods over native JavaScript equivalents for consistency
+
+- **Required Lodash Functions:**
+  - **`_.get()`** - For safe property access instead of optional chaining
+  - **`_.map()`** - For array transformations
+  - **`_.filter()`** - For array filtering
+  - **`_.find()`** - For finding elements
+  - **`_.forEach()`** - For iterations
+  - **`_.isEmpty()`** - For checking empty values
+  - **`_.isNil()`** - For null/undefined checks
+  - **`_.pick()`** - For selecting object properties
+  - **`_.omit()`** - For excluding object properties
+  - **`_.merge()`** - For deep object merging
+  - **`_.cloneDeep()`** - For deep cloning objects
+
+- **Import Pattern:**
+  - **For CommonJS projects:** Use `require()` with destructuring
+  - **For ES Module projects** (`"type": "module"` in package.json): Import default then destructure
+  - **Why this pattern?** The regular `lodash` package is CommonJS. In ES modules, you must import the default export first, then destructure the functions you need
+  - **Alternative:** Use `lodash-es` package if you prefer direct named imports, but this codebase uses regular `lodash`
+
+  ```javascript
+  // ✅ DO: CommonJS require style
+  const { get, map, filter, isEmpty, isNil } = require('lodash');
+  
+  // ✅ DO: ES Module style (for projects with "type": "module")
+  import lodash from 'lodash';
+  const { get, map, filter, isEmpty, isNil } = lodash;
+  
+  // ❌ DON'T: Import entire lodash with underscore
+  const _ = require('lodash');
+  const _ = lodash; // Don't use underscore variable
+  
+  // ❌ DON'T: Direct destructuring from import (doesn't work with CommonJS lodash in ES modules)
+  import { get, map, filter } from 'lodash'; // This will fail
+  
+  // ❌ DON'T: Use dynamic import with await
+  const { get, isNil } = await import('lodash'); // This will fail
+  ```
+
+- **Property Access:**
+  ```javascript
+  // ✅ DO: Use _.get() for safe property access
+  const userName = get(user, 'profile.name', 'Anonymous');
+  const userId = get(req, 'body.userId');
+  const config = get(settings, 'api.timeout', 5000);
+  
+  // ❌ DON'T: Use optional chaining
+  const userName = user?.profile?.name ?? 'Anonymous';
+  const userId = req?.body?.userId;
+  
+  // ❌ DON'T: Use direct property access without safety
+  const userName = user.profile.name;
+  ```
+
+- **Array Operations:**
+  ```javascript
+  // ✅ DO: Use lodash map
+  const userIds = map(users, user => get(user, 'id'));
+  const names = map(users, 'name'); // Shorthand
+  
+  // ✅ DO: Use lodash filter
+  const activeUsers = filter(users, user => get(user, 'status') === 'active');
+  const activeUsers = filter(users, { status: 'active' }); // Shorthand
+  
+  // ✅ DO: Use lodash find
+  const admin = find(users, user => get(user, 'role') === 'admin');
+  
+  // ❌ DON'T: Use native array methods
+  const userIds = users.map(user => user.id);
+  const activeUsers = users.filter(user => user.status === 'active');
+  ```
+
+- **Null/Undefined Checks:**
+  ```javascript
+  // ✅ DO: Use lodash for null checks
+  if (isNil(value)) {
+    return defaultValue;
+  }
+  
+  if (isEmpty(data)) {
+    return [];
+  }
+  
+  // ❌ DON'T: Use nullish coalescing operator
+  const result = value ?? defaultValue;
+  
+  // ❌ DON'T: Use optional chaining for checks
+  if (!data?.length) {
+    return [];
+  }
+  ```
+
+- **Modern JavaScript Patterns:**
+  - **Use ES6+ features:** arrow functions, destructuring, template literals, async/await
+  - **Use const/let:** Never use var
+  - **Use async/await:** Prefer over promise chains
+  - **Use template literals:** For string interpolation
+
+  ```javascript
+  // ✅ DO: Complete ES Module file example with lodash
+  import { eq, or } from 'drizzle-orm';
+  import { db } from '../db/drizzle.js';
+  import lodash from 'lodash';
+  const { get, isNil, isEmpty, pick } = lodash;
+  
+  export const getUserData = async (userId) => {
+    const user = await User.findById(userId);
+    const userName = get(user, 'name', 'Unknown');
+    const email = get(user, 'email');
+    
+    return {
+      name: userName,
+      email,
+      isActive: get(user, 'status') === 'active'
+    };
+  };
+  
+  // ✅ DO: Destructuring with lodash
+  const { name, email } = user;
+  const roles = get(user, 'roles', []);
+  
+  // ✅ DO: Template literals with lodash
+  const message = `Welcome, ${get(user, 'name', 'Guest')}!`;
+  
+  // ❌ DON'T: Mix optional chaining with modern syntax
+  const userName = user?.name ?? 'Unknown';
+  ```
+
+- **Object Manipulation:**
+  ```javascript
+  // ✅ DO: Use lodash for object operations
+  const publicData = pick(user, ['name', 'email', 'avatar']);
+  const safeData = omit(user, ['password', 'token']);
+  const merged = merge({}, defaults, options);
+  const cloned = cloneDeep(originalObject);
+  
+  // ❌ DON'T: Use spread operator for deep operations
+  const merged = { ...defaults, ...options }; // Only for shallow merge
+  const cloned = { ...originalObject }; // Only for shallow clone
+  ```
+
+- **Error Handling:**
+  ```javascript
+  // ✅ DO: Explicit error handling with lodash
+  const processUser = async (userId) => {
+    try {
+      const user = await User.findById(userId);
+      
+      if (isNil(user)) {
+        throw new Error('User not found');
+      }
+      
+      const email = get(user, 'email');
+      if (isEmpty(email)) {
+        throw new Error('User email is required');
+      }
+      
+      return user;
+    } catch (error) {
+      const message = get(error, 'message', 'Unknown error');
+      console.error(`Error processing user: ${message}`);
+      throw error;
+    }
+  };
+  
+  // ❌ DON'T: Rely on optional chaining for error prevention
+  const email = user?.email ?? null;
+  ```
+
+- **Function Patterns:**
+  ```javascript
+  // ✅ DO: Arrow functions with explicit returns
+  const getActiveUsers = (users) => {
+    return filter(users, user => get(user, 'status') === 'active');
+  };
+  
+  // ✅ DO: Async arrow functions
+  const fetchUserData = async (userId) => {
+    const user = await User.findById(userId);
+    return pick(user, ['id', 'name', 'email']);
+  };
+  
+  // ✅ DO: Default parameters
+  const createUser = (data, options = {}) => {
+    const timeout = get(options, 'timeout', 5000);
+    return User.create(data, { timeout });
+  };
+  ```
+
+- **Chaining Operations:**
+  ```javascript
+  // ✅ DO: Chain lodash operations for readability
+  const result = filter(users, user => get(user, 'status') === 'active');
+  const names = map(result, user => get(user, 'name'));
+  const sorted = sortBy(names);
+  
+  // ✅ DO: Multi-step transformations
+  const processUsers = (users) => {
+    const active = filter(users, { status: 'active' });
+    const withEmails = filter(active, user => !isEmpty(get(user, 'email')));
+    return map(withEmails, user => pick(user, ['id', 'name', 'email']));
+  };
+  ```
+
+- **Benefits of This Approach:**
+  - **Consistency:** All code follows the same patterns
+  - **Safety:** Explicit null handling prevents runtime errors
+  - **Readability:** Clear intent with named functions
+  - **Maintainability:** Easy to understand and modify
+  - **Testability:** Predictable behavior makes testing easier
+
+- **Common Patterns in Controllers:**
+  ```javascript
+  // ✅ DO: Complete controller file with lodash (ES Module)
+  import lodash from 'lodash';
+  const { get, isEmpty, isNil, pick } = lodash;
+  
+  import { User } from '../models/user.js';
+  import { generateToken } from '../utils/auth.js';
+  
+  const authController = {
+    login: async (req, res) => {
+      try {
+        const email = get(req, 'body.email');
+        const password = get(req, 'body.password');
+        
+        if (isEmpty(email) || isEmpty(password)) {
+          return res.status(400).json({
+            message: 'Email and password are required'
+          });
+        }
+        
+        const user = await User.findOne({ email });
+        
+        if (isNil(user)) {
+          return res.status(401).json({
+            message: 'Invalid credentials'
+          });
+        }
+        
+        const token = generateToken(get(user, 'id'));
+        const userData = pick(user, ['id', 'name', 'email', 'role']);
+        
+        return res.json({ token, user: userData });
+      } catch (error) {
+        const message = get(error, 'message', 'Server error');
+        return res.status(500).json({ message });
+      }
+    }
+  };
+  
+  export default authController;
+  ```
+
+- **When to Use Native Methods:**
+  - **Simple array length checks:** `array.length > 0` is acceptable
+  - **Basic loops:** `for` loops for performance-critical code
+  - **Spread operator:** Only for shallow operations when appropriate
+  - **String methods:** Native string methods like `.trim()`, `.toLowerCase()` are fine
+
+- **Rule Exceptions:**
+  - Third-party library code that requires optional chaining
+  - Generated code or migrations
+  - Test files may use optional chaining for brevity (but lodash is still preferred)
