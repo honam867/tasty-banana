@@ -3,22 +3,21 @@
     "main": {
       "provider": "openai",
       "modelId": "gpt-5",
-      "maxTokens": 128000,
+      "maxTokens": 1000000,
       "temperature": 0.2,
       "baseURL": "https://gpt1.shupremium.com/v1"
     },
     "research": {
-      "provider": "gemini-cli",
-      "modelId": "gemini-2.5-flash",
+      "provider": "openai",
+      "modelId": "gpt-4o-search-preview",
       "maxTokens": 65536,
       "temperature": 0.1
     },
     "fallback": {
-      "provider": "openai",
-      "modelId": "gpt-5",
-      "maxTokens": 65536,
-      "temperature": 0.2,
-      "baseURL": "https://gpt1.shupremium.com/v1"
+      "provider": "openrouter",
+      "modelId": "openai/gpt-4.1",
+      "maxTokens": 1000000,
+      "temperature": 0.2
     }
   },
   "global": {

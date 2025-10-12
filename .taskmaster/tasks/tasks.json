@@ -3,8 +3,8 @@
     "tasks": [],
     "metadata": {
       "created": "2025-10-11T06:05:34.976Z",
-      "description": "Default tasks context",
-      "updated": "2025-10-11T09:25:40.728Z"
+      "updated": "2025-10-12T05:40:58.976Z",
+      "description": "Tasks for master context"
     }
   },
   "refactor-drizzle": {
@@ -336,6 +336,180 @@
       "created": "2025-10-12T03:36:54.257Z",
       "updated": "2025-10-12T05:03:14.213Z",
       "description": "Tasks for be-design-database context"
+    }
+  },
+  "be-upload-feature": {
+    "tasks": [
+      {
+        "id": 1,
+        "title": "Set Up Cloudflare R2 Bucket and Environment Variables",
+        "description": "Provision the Cloudflare R2 bucket and configure all required environment variables for access and public URL.",
+        "details": "- Create the R2 bucket named 'imggen-uploads'.\n- Generate Access Key ID and Secret Access Key for the project.\n- Note the Account ID and public base URL (or CDN URL if fronted).\n- Configure the bucket for public GET access.\n- Add all required environment variables to the server's environment (R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET, R2_PUBLIC_BASE_URL, APP_BASE_URL, APP_ENV, UPLOAD_MAX_SIZE_MB, AUTH_BEARER_TOKENS).",
+        "testStrategy": "- Verify that the bucket exists and is publicly readable.\n- Confirm that environment variables are loaded and accessible in the application context.",
+        "priority": "high",
+        "dependencies": [],
+        "status": "done",
+        "subtasks": []
+      },
+      {
+        "id": 2,
+        "title": "Install and Configure Required Node.js Packages",
+        "description": "Install all necessary Node.js dependencies for the upload feature, including Express, Multer, AWS SDK v3, ulid, and mime-types.",
+        "details": "- Run `npm i express multer @aws-sdk/client-s3 @aws-sdk/lib-storage ulid mime-types`.\n- Ensure package.json is updated and dependencies are correctly installed.",
+        "testStrategy": "- Run `npm ls` and ensure all packages are present.\n- Import each package in a test file to confirm successful installation.",
+        "priority": "high",
+        "dependencies": [
+          1
+        ],
+        "status": "done",
+        "subtasks": []
+      },
+      {
+        "id": 3,
+        "title": "Implement Minimal Bearer Token Authentication Middleware",
+        "description": "Use the project's existing JWT authentication middleware to validate Bearer tokens and attach the authenticated user to requests. Do not implement a new or hardcoded bearer token system. Apply this to protect the upload endpoint so only authenticated users can upload files.",
+        "status": "done",
+        "dependencies": [
+          2
+        ],
+        "priority": "high",
+        "details": "- Import and use the existing JWT validation middleware `verifyToken` from `src/middlewares/tokenHandler.js`.\n- `verifyToken` reads the Authorization header, validates the JWT using `TOKEN_SECRET_KEY`, fetches the user from the database, and attaches it to `req.user`.\n- Remove any plan or code for hardcoded bearer token lists (no `AUTH_BEARER_TOKENS` parsing).\n- Apply `verifyToken` as middleware to the upload route so only authenticated users can upload.\n- Use `req.user.id` to associate uploads with the authenticated user in the database.\n- 401 responses for missing/invalid/expired tokens are handled by `verifyToken` (no additional 401 handling needed).",
+        "testStrategy": "- Send upload requests with a valid JWT obtained from login; request should succeed and `req.user` should contain correct user info (id, username, email, role, etc.).\n- Send upload requests without an Authorization header; should return 401 Unauthenticated.\n- Send upload requests with an invalid or expired JWT; should return 401 Unauthenticated.\n- Verify the upload logic associates records with `req.user.id` and that `req.user` is present on authenticated requests.",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Replace custom bearer token logic with existing `verifyToken` middleware",
+            "description": "Remove any custom/minimal bearer token middleware or references to `AUTH_BEARER_TOKENS`. Ensure authentication uses `src/middlewares/tokenHandler.js#verifyToken`.",
+            "dependencies": [],
+            "details": "Search the codebase for any custom auth middleware and delete or deprecate it. Centralize all protected routes to use `verifyToken`.",
+            "status": "done",
+            "testStrategy": "Unit test `verifyToken` usage by mocking requests with valid/invalid tokens and asserting `req.user` population and 401 responses."
+          },
+          {
+            "id": 2,
+            "title": "Apply `verifyToken` to the /v1/uploads route",
+            "description": "Protect the upload endpoint by adding `verifyToken` as middleware so only authenticated users can upload files.",
+            "dependencies": [],
+            "details": "Update the uploads router to include `verifyToken` before the handler. Ensure the handler reads `req.user.id` to associate uploads.",
+            "status": "done",
+            "testStrategy": "Integration test POST /v1/uploads with valid token (success) and without/invalid token (401). Verify `req.user` is present in the handler."
+          },
+          {
+            "id": 3,
+            "title": "Validate `req.user` data usage in upload handling",
+            "description": "Ensure the upload persistence logic uses `req.user.id` (and other fields if needed) to attribute uploads to the authenticated user.",
+            "dependencies": [],
+            "details": "Audit the DB insert logic for uploads to confirm it references `req.user.id`. Add fallbacks or error handling if `req.user` is missing.",
+            "status": "done",
+            "testStrategy": "Inspect created DB rows to confirm they include the correct user identifier. Add tests that assert attribution."
+          },
+          {
+            "id": 4,
+            "title": "Confirm environment configuration for JWT",
+            "description": "Ensure `TOKEN_SECRET_KEY` is set in the environment and documented for local/dev/test environments.",
+            "dependencies": [],
+            "details": "Update env samples (.env.example) and deployment configuration to include `TOKEN_SECRET_KEY`.",
+            "status": "done",
+            "testStrategy": "Run authentication flow locally with the configured secret and verify tokens are accepted/rejected as expected."
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Configure Multer for In-Memory File Uploads with Validation",
+        "description": "Set up Multer middleware to accept multipart/form-data uploads, enforce max file size, and restrict to allowed image MIME types.",
+        "details": "- Use multer.memoryStorage().\n- Set fileSize limit from UPLOAD_MAX_SIZE_MB.\n- Accept only 'image/png', 'image/jpeg', 'image/webp', 'image/gif'.\n- Return 400 for missing file, 415 for unsupported MIME, 400 for size exceeded.",
+        "testStrategy": "- Upload files of various types and sizes, verify correct error codes and acceptance.",
+        "priority": "high",
+        "dependencies": [
+          3
+        ],
+        "status": "done",
+        "subtasks": []
+      },
+      {
+        "id": 5,
+        "title": "Implement S3 Client for Cloudflare R2 Integration",
+        "description": "Configure AWS SDK v3 S3Client to connect to Cloudflare R2 using environment credentials and endpoint.",
+        "details": "- Instantiate S3Client with endpoint `https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com`.\n- Use credentials from environment variables.\n- Test connection by listing buckets or uploading a test object.",
+        "testStrategy": "- Attempt to upload a test file to the bucket and verify its presence via the R2 dashboard or public URL.",
+        "priority": "high",
+        "dependencies": [
+          4
+        ],
+        "status": "done",
+        "subtasks": []
+      },
+      {
+        "id": 6,
+        "title": "Design and Implement Storage Key Generation Utility",
+        "description": "Create a function to generate storage keys for uploads using the specified pattern and filename slugification.",
+        "details": "- Use ULID (or nanoid) for uniqueness.\n- Format: `u/{user_id}/{yyyy}/{mm}/{dd}/{ulid}_{slugifiedOriginalName}`.\n- Slugify original filename (lowercase, alphanumeric and dashes, max 60 chars).\n- Use current UTC date for path components.\n\n## Implementation Complete ✅\n\n**Files Created:**\n\n1. **`server/src/utils/storageKey.js`** - Storage key generation utility\n   - `generateStorageKey(userId, originalFilename, date)` - Main function to generate storage keys\n   - `slugifyFilename(filename, maxLength)` - Helper to slugify filenames (lowercase, alphanumeric, dashes, max 60 chars)\n   - `extractSlugFromKey(storageKey)` - Utility to extract filename slug from a key\n   - Uses ULID for uniqueness guarantees\n   - Follows pattern: `u/{user_id}/{yyyy}/{mm}/{dd}/{ulid}_{slugifiedOriginalName}`\n   - Uses UTC date for path components\n   - Adheres to project rules: lodash utilities (trim, toLower, replace, truncate), ES6+, no optional chaining\n\n2. **`server/tests/utils/storageKey.spec.js`** - Comprehensive unit tests (32 tests, all passing)\n   - Tests slugification with various edge cases (special chars, Vietnamese, long names, empty names)\n   - Tests storage key format validation\n   - Tests collision resistance (100 unique keys for same inputs)\n   - Tests date formatting and UTC handling\n   - Tests error handling for missing inputs\n   - Tests real-world filename scenarios\n\n**Key Features:**\n- ULID-based uniqueness (collision-resistant)\n- Proper filename slugification (removes extensions, special chars, limits length to 60)\n- UTC date-based organization (YYYY/MM/DD)\n- Handles edge cases: empty filenames, only special chars, very long names, multiple extensions\n- Full test coverage with 32 passing tests\n\n**Next Steps:**\nReady for use in task 7 (implement /v1/uploads API route handler).",
+        "testStrategy": "- Unit test with various filenames and user IDs to ensure correct, collision-resistant keys.",
+        "priority": "medium",
+        "dependencies": [
+          5
+        ],
+        "status": "done",
+        "subtasks": []
+      },
+      {
+        "id": 7,
+        "title": "Implement /v1/uploads API Route Handler",
+        "description": "Create the Express route to handle POST /v1/uploads, authenticate, validate, upload to R2, and respond with JSON.",
+        "details": "- Use the auth and multer middleware.\n- Validate file and metadata fields.\n- Generate storage key and upload to R2 using S3Client.\n- Construct public URL from R2_PUBLIC_BASE_URL and storage key.\n- Prepare upload row object for DB insertion.\n- Return JSON response as specified.",
+        "testStrategy": "- End-to-end test with cURL and Postman, verify correct JSON response and error handling.",
+        "priority": "high",
+        "dependencies": [
+          6
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 8,
+        "title": "Integrate Database Insert for Uploads Table",
+        "description": "Insert a new row into the uploads table with all required metadata after successful R2 upload.",
+        "details": "- Use the existing DB layer (e.g., Drizzle, Knex, or raw SQL).\n- Insert all required fields: id, user_id, thread_id, title, purpose, mime_type, size_bytes, storage_provider, storage_bucket, storage_key, public_url, checksum_sha256, created_at.\n- Use gen_random_uuid() or equivalent for id.\n- Return the inserted row for the API response.",
+        "testStrategy": "- Verify that a new row is created in the uploads table for each successful upload.\n- Check that all fields are correctly populated.",
+        "priority": "high",
+        "dependencies": [
+          7
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 9,
+        "title": "Implement Error Handling and Response Codes",
+        "description": "Ensure all error cases return the correct HTTP status and error JSON as per the spec.",
+        "details": "- 400 for missing file or size exceeded.\n- 415 for unsupported MIME type.\n- 401 for missing/invalid token.\n- 500 for internal errors (R2 or DB failures).\n- Log errors for debugging.",
+        "testStrategy": "- Simulate each error case and verify the correct status code and error message in the response.",
+        "priority": "medium",
+        "dependencies": [
+          8
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 10,
+        "title": "Deploy and Validate the Upload Endpoint",
+        "description": "Deploy the server and verify the endpoint is reachable, uploads work, and files are accessible at the public URL.",
+        "details": "- Deploy the server to the target environment.\n- Test the endpoint with real image uploads.\n- Confirm files are stored in R2 and accessible via public_url.\n- Ensure the uploads table is updated and the API response matches the spec.",
+        "testStrategy": "- Use cURL and browser to upload images and access the resulting public URLs.\n- Check database for correct row insertion.\n- Run through the test checklist from the PRD.",
+        "priority": "high",
+        "dependencies": [
+          9
+        ],
+        "status": "pending",
+        "subtasks": []
+      }
+    ],
+    "metadata": {
+      "created": "2025-10-12T06:59:15.308Z",
+      "updated": "2025-10-12T10:30:38.389Z",
+      "description": "Tasks for be-upload-feature context"
     }
   }
 }

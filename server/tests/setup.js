@@ -1,3 +1,8 @@
+import { config } from 'dotenv';
+
+// Load environment variables from .env file
+config();
+
 import lodash from 'lodash';
 const { get } = lodash;
 

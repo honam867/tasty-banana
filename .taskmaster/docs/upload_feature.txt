@@ -1,0 +1,295 @@
+upload_feature.txt
+====================================
+
+# Overview
+Implements a **basic image upload feature** for the Image Generator Chat App. Files are **uploaded via API**, stored on **Cloudflare R2**, and a **public URL** is saved to the `uploads` table. Security is intentionally minimal per request: **only authenticate the current API** (simple bearer token check).
+
+> This spec matches the tone/structure of your `design_database.txt` while focusing narrowly on the upload path.
+
+---
+
+# Goals (MVP)
+- API endpoint to accept an image file and minimal metadata.
+- Store the file in **Cloudflare R2** (S3-compatible).
+- Persist an `uploads` row with the resulting public URL and metadata.
+- Return a compact JSON response that the client can use immediately.
+- Keep it **simple**: 1 route, basic validation, no complex security/policies, no background jobs.
+
+---
+
+# Non-Goals (Explicitly Skipped)
+- Full auth/role/permission system (only simple bearer check).
+- Virus scanning, content moderation, rate limiting.
+- Complex CORS/signing flows (no presigned flows by default).
+- Image transformations (resize, EXIF scrub) or CDN rules.
+- Retries/backoffs, multipart chunking, resumable uploads.
+
+---
+
+# Cloudflare R2 Setup (Minimal)
+1. Create an R2 bucket, e.g. `imggen-uploads`.
+2. Generate **Access Key ID** and **Secret Access Key** for this project.
+3. Note the **Account ID** and your **R2 public bucket base URL** (or CDN URL if fronted).
+4. Configure bucket to allow public GET (either via a public bucket or via a CDN mapped to a private bucket; for MVP choose public).
+
+### Required ENV (server)
+```
+# Cloudflare R2 (S3-compatible)
+R2_ACCOUNT_ID=xxxxxxxxxxxxxxxxxxxx
+R2_ACCESS_KEY_ID=xxxxxxxxxxxxxxxxxxxx
+R2_SECRET_ACCESS_KEY=xxxxxxxxxxxxxxxxxxxx
+R2_BUCKET=imggen-uploads
+# Either the public base URL (CDN) or R2 public bucket URL
+R2_PUBLIC_BASE_URL=https://pub-xxxxxxxxxxxxxxxxxxxx.r2.dev
+
+# App
+APP_BASE_URL=https://api.example.com
+APP_ENV=development
+UPLOAD_MAX_SIZE_MB=25
+AUTH_BEARER_TOKENS=devtoken1,devtoken2
+```
+
+> If you use the R2 S3 API endpoint directly, the endpoint is: `https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com`
+
+---
+
+# API Design
+**Method/Path:** `POST /v1/uploads`
+**Auth:** Bearer token (header `Authorization: Bearer <token>`).
+
+## Request (multipart/form-data)
+- **file** (required): the binary image (png/jpg/webp/gif)
+- **thread_id** (optional but recommended): UUID of the thread to attach
+- **purpose** (optional): `init | mask | reference | attachment`
+- **title** (optional): short human label
+
+**Constraints (MVP)**
+- Max size: `UPLOAD_MAX_SIZE_MB` (default 25 MB).
+- Allowed mime types: `image/png`, `image/jpeg`, `image/webp`, `image/gif`.
+
+## Response (200)
+```json
+{
+  "upload": {
+    "id": "uuid",
+    "user_id": "uuid",
+    "thread_id": "uuid|null",
+    "title": "string|null",
+    "purpose": "reference",
+    "mime_type": "image/png",
+    "size_bytes": 123456,
+    "storage_provider": "r2",
+    "storage_bucket": "imggen-uploads",
+    "storage_key": "u/USERID/yyyy/mm/dd/ULID_filename.png",
+    "public_url": "https://.../u/USERID/yyyy/mm/dd/ULID_filename.png",
+    "checksum_sha256": "hex|null",
+    "created_at": "2025-10-12T05:10:20.123Z"
+  }
+}
+```
+
+## Error Responses
+- 400 invalid input (missing file / mime not allowed / size exceeded)
+- 401 unauthorized (missing/invalid token)
+- 415 unsupported media type
+- 500 internal error (S3 upload failure, DB failure)
+
+---
+
+# Storage Key Strategy
+```
+u/{user_id}/{yyyy}/{mm}/{dd}/{ulid}_{slugifiedOriginalName}
+```
+- **Why**: keeps keys stable and listable by date/user; readable and collision-resistant.
+- Use **ULID** (or nanoid) prefix to avoid collisions.
+- Sanitize original filename to a short, safe slug.
+
+---
+
+# Database Integration (uses existing `uploads` table)
+Minimal columns expected (align with your schema; adjust names as needed):
+```
+id                uuid PK
+user_id           uuid NOT NULL
+thread_id         uuid NULL
+title             text NULL
+purpose           text NOT NULL DEFAULT 'reference'
+mime_type         text NOT NULL
+size_bytes        bigint NOT NULL
+storage_provider  text NOT NULL DEFAULT 'r2'
+storage_bucket    text NOT NULL
+storage_key       text NOT NULL
+public_url        text NOT NULL
+checksum_sha256   text NULL
+created_at        timestamptz NOT NULL DEFAULT now()
+```
+
+### Example INSERT (SQL)
+```sql
+INSERT INTO uploads (
+  id, user_id, thread_id, title, purpose, mime_type, size_bytes,
+  storage_provider, storage_bucket, storage_key, public_url, checksum_sha256
+) VALUES (
+  gen_random_uuid(),
+  $1, $2, $3, COALESCE($4, 'reference'), $5, $6,
+  'r2', $7, $8, $9, $10
+)
+RETURNING *;
+```
+
+---
+
+# Minimal Node.js Implementation (Express + Multer + AWS SDK v3)
+> Assumes Postgres + Drizzle (or your DB layer). Replace the DB section as needed.
+
+**Install**
+```
+npm i express multer @aws-sdk/client-s3 @aws-sdk/lib-storage ulid mime-types
+```
+
+**upload.routes.ts**
+```ts
+import express from "express";
+import multer from "multer";
+import { ulid } from "ulid";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { extname } from "path";
+import mime from "mime-types";
+
+const router = express.Router();
+
+// ---- minimal auth ----
+const auth = (req, res, next) => {
+  const authz = req.header("Authorization");
+  const tokens = (process.env.AUTH_BEARER_TOKENS || "").split(",").map(s => s.trim()).filter(Boolean);
+  if (!authz?.startsWith("Bearer ")) return res.status(401).json({ error: "unauthorized" });
+  const token = authz.slice("Bearer ".length).trim();
+  if (!tokens.includes(token)) return res.status(401).json({ error: "unauthorized" });
+  next();
+};
+
+// ---- multer in-memory ----
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: (Number(process.env.UPLOAD_MAX_SIZE_MB || 25) * 1024 * 1024) }
+});
+
+// ---- S3 client for R2 ----
+const s3 = new S3Client({
+  region: "auto",
+  endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+  }
+});
+
+// ---- helpers ----
+const allowed = new Set(["image/png","image/jpeg","image/webp","image/gif"]);
+const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/(^-|-$)+/g,"").slice(0,60);
+
+router.post("/v1/uploads", auth, upload.single("file"), async (req, res) => {
+  try {
+    const file = req.file;
+    if (!file) return res.status(400).json({ error: "file is required" });
+    if (!allowed.has(file.mimetype)) return res.status(415).json({ error: "unsupported media type" });
+
+    const userId = (req as any).user?.id || "00000000-0000-0000-0000-000000000000"; // TODO: bind real user
+    const { thread_id, purpose = "reference", title } = req.body;
+
+    const now = new Date();
+    const yyyy = String(now.getUTCFullYear());
+    const mm = String(now.getUTCMonth()+1).padStart(2,"0");
+    const dd = String(now.getUTCDate()).padStart(2,"0");
+
+    const original = req.file.originalname || f"upload.{mime.extension(file.mimetype) or 'bin'}";
+    const key = f"u/{userId}/{yyyy}/{mm}/{dd}/{ulid()}_{slug(original) or 'file'}";
+
+    // upload to R2
+    await s3.send(new PutObjectCommand({
+      Bucket: process.env.R2_BUCKET!,
+      Key: key,
+      Body: file.buffer,
+      ContentType: file.mimetype
+      // For public buckets, ACL may be ignored; ensure bucket policy allows public reads
+    }));
+
+    const publicUrl = f"{process.env.R2_PUBLIC_BASE_URL.rstrip('/')}/{key}";
+
+    // --- DB save (pseudo) ---
+    // const uploadRow = await db.insert(uploads).values({ ... }).returning();
+    const uploadRow = {
+      id: "uuid-from-db",
+      user_id: userId,
+      thread_id: thread_id or null,
+      title: title or null,
+      purpose,
+      mime_type: file.mimetype,
+      size_bytes: file.size,
+      storage_provider: "r2",
+      storage_bucket: process.env.R2_BUCKET!,
+      storage_key: key,
+      public_url: publicUrl,
+      checksum_sha256: null,
+      created_at: now.toISOString()
+    };
+
+    return res.json({ upload: uploadRow });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "upload_failed" });
+  }
+});
+
+export default router;
+```
+
+**server.ts**
+```ts
+import express from "express";
+import uploadsRouter from "./upload.routes";
+
+const app = express();
+app.use(uploadsRouter);
+app.listen(3000, () => console.log("API listening on :3000"));
+```
+
+---
+
+# Example cURL
+```
+curl -X POST https://api.example.com/v1/uploads \
+  -H "Authorization: Bearer devtoken1" \
+  -F "file=@/path/to/cat.png" \
+  -F "thread_id=1b0d7b30-5c4b-4a3a-b6b9-2f2bfa7b25a0" \
+  -F "purpose=reference" \
+  -F "title=My reference cat"
+```
+
+---
+
+# Test Checklist (MVP)
+- [ ] Missing file → 400
+- [ ] Unsupported MIME → 415
+- [ ] > MAX size → 400
+- [ ] No/Bad token → 401
+- [ ] Happy path → 200 returns populated `upload`
+- [ ] Stored object available at `public_url`
+
+---
+
+# Future Enhancements (Optional Later)
+- Presigned URL uploads for large files / browsers.
+- Private bucket + signed GET (short-lived) or CDN with token auth.
+- Post-upload processing (thumbnailing, EXIF strip).
+- Content moderation / antivirus.
+- Soft delete + lifecycle rules (auto-expire unused uploads).
+- Connect `message_attachments` automatically after upload when `thread_id` is given.
+
+---
+
+# Done Criteria (MVP)
+- Endpoint deployed and reachable.
+- Confirmed upload to R2 bucket.
+- Row persisted in `uploads`.
+- Response contains a working `public_url`.

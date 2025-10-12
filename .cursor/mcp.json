@@ -6,6 +6,9 @@
          "CONTEXT7_API_KEY": "ctx7sk-297e6e11-8361-4b03-9014-baa08612d881"
        }
      },
+     "playwright": {
+      "url": "http://localhost:8931/mcp"
+    },
      "task-master-ai": {
        "command": "npx",
        "args": [
