@@ -129,5 +129,213 @@
       "updated": "2025-10-11T10:31:37.900Z",
       "description": "Authentication testing tasks for all auth routes"
     }
+  },
+  "be-design-database": {
+    "tasks": [
+      {
+        "id": 1,
+        "title": "Initialize Drizzle ORM and Define Database Enums",
+        "description": "Set up Drizzle ORM for PostgreSQL database interaction and define the custom enum types required for various table columns.",
+        "details": "Initialize the Drizzle ORM environment, ensuring connectivity to the PostgreSQL database. Define the following enum types in the Drizzle schema, which will map to PostgreSQL ENUM types:\n- `message_role`: 'user', 'assistant', 'tool', 'system'\n- `run_status`: 'queued', 'processing', 'succeeded', 'failed', 'canceled'\n- `job_type`: 'text2img', 'img2img', 'inpaint', 'upscale', 'variation'\n- `file_purpose`: 'init', 'mask', 'reference', 'attachment'\n\nExample Drizzle schema for enums:\n```typescript\nimport { pgEnum } from 'drizzle-orm/pg-core';\n\nexport const messageRoleEnum = pgEnum('message_role', ['user', 'assistant', 'tool', 'system']);\nexport const runStatusEnum = pgEnum('run_status', ['queued', 'processing', 'succeeded', 'failed', 'canceled']);\nexport const jobTypeEnum = pgEnum('job_type', ['text2img', 'img2img', 'inpaint', 'upscale', 'variation']);\nexport const filePurposeEnum = pgEnum('file_purpose', ['init', 'mask', 'reference', 'attachment']);\n```",
+        "testStrategy": "Verify that Drizzle ORM can successfully connect to the PostgreSQL database. Generate and run a Drizzle migration to create the enum types in the database. Query the database to confirm the existence and valid values of each enum type.",
+        "priority": "high",
+        "dependencies": [],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Install Drizzle ORM, Drizzle Kit, and PostgreSQL Driver",
+            "description": "Add the necessary npm packages (`drizzle-orm`, `drizzle-kit`, `pg`) to the project to enable database interaction and migrations.",
+            "dependencies": [],
+            "details": "Execute `npm install drizzle-orm drizzle-kit pg` and `npm install -D @types/pg drizzle`. Verify these dependencies are correctly listed in the `package.json` file. This is the foundational step for all database operations.\n<info added on 2025-10-12T04:25:55.210Z>\nVerified packages in package.json:\n- dependencies: drizzle-orm ^0.44.6, drizzle-kit ^0.31.5, pg ^8.16.3\n- devDependencies: @types/pg ^8.15.5\n\nAll installations successful. Foundation for Drizzle ORM operations is in place; proceed to create and configure drizzle.config.ts.\n</info added on 2025-10-12T04:25:55.210Z>",
+            "status": "done",
+            "testStrategy": "Check `package.json` and `node_modules` to confirm the packages are installed correctly. A successful `npm install` with no errors is the primary validation."
+          },
+          {
+            "id": 2,
+            "title": "Create and Configure `drizzle.config.ts`",
+            "description": "Set up the Drizzle Kit configuration file to manage database migrations, specifying the schema location, output directory, and database driver.",
+            "dependencies": [
+              1
+            ],
+            "details": "Create a `drizzle.config.ts` file in the project root. Configure it to use the `pg` driver, point to `./src/db/schema.ts` for the schema, and set the migration output directory to `./drizzle`. Ensure `dbCredentials` are configured to read from `process.env.DATABASE_URL`.\n<info added on 2025-10-12T04:29:35.026Z>\nVerified existing configuration in drizzle.config.js (pg dialect, schema ./src/db/schema.js, migrations ./drizzle, DATABASE_URL from env). No changes required. If migrating to TypeScript later, rename to drizzle.config.ts and update schema path to ./src/db/schema.ts.\n</info added on 2025-10-12T04:29:35.026Z>",
+            "status": "done",
+            "testStrategy": "Run `npx drizzle-kit check` from the command line. A successful execution will validate the configuration file and its ability to connect to the database without generating a migration."
+          },
+          {
+            "id": 3,
+            "title": "Implement and Export Drizzle Database Instance",
+            "description": "Create a module to initialize the PostgreSQL connection pool and the Drizzle instance, making it a singleton available for the entire application.",
+            "dependencies": [
+              1
+            ],
+            "details": "Create a file at `src/db/index.ts`. In this file, import `Pool` from `pg` and `drizzle` from `drizzle-orm/node-postgres`. Initialize a new `Pool` using the `DATABASE_URL` from environment variables. Create and export a `db` constant by calling `drizzle()` with the pool.\n<info added on 2025-10-12T04:29:47.770Z>\nImplementation already exists at src/db/drizzle.js:\n- Initializes PostgreSQL Pool from POSTGRES_URL\n- Creates and exports the Drizzle db instance\n- Exports the Pool for direct access\n- Provides testConnection() for connection validation\n- Handles missing DATABASE_URL errors\n\nNo action needed. If other modules expect src/db/index.ts or the DATABASE_URL env name, add a thin re-export shim at src/db/index.ts that exports db, pool, and testConnection from ./drizzle.js, or update imports/env to match.\n</info added on 2025-10-12T04:29:47.770Z>",
+            "status": "done",
+            "testStrategy": "Create a temporary test script that imports the `db` instance and performs a basic, raw SQL query (e.g., `db.execute(sql`SELECT 1`)`) to verify the connection is established successfully."
+          },
+          {
+            "id": 4,
+            "title": "Define All Required Enums in `src/db/schema.ts`",
+            "description": "Define the Drizzle schema for the four required PostgreSQL ENUM types: `message_role`, `run_status`, `job_type`, and `file_purpose`.",
+            "dependencies": [],
+            "details": "In the `src/db/schema.ts` file, import `pgEnum` from `drizzle-orm/pg-core`. Define and export `messageRoleEnum`, `runStatusEnum`, `jobTypeEnum`, and `filePurposeEnum` using the `pgEnum` helper, providing the specified values for each.\n<info added on 2025-10-12T04:31:02.172Z>\nImplemented and exported messageRoleEnum, runStatusEnum, jobTypeEnum, and filePurposeEnum using pgEnum in src/db/schema.js. Added pgEnum import. ESLint check passed with no syntax errors. Enums are ready for use in table schemas; proceed to generate and apply the initial migration.\n</info added on 2025-10-12T04:31:02.172Z>",
+            "status": "done",
+            "testStrategy": "Lint the `src/db/schema.ts` file to ensure there are no syntax errors. The successful generation of a migration in the subsequent step will also serve as a primary test of correctness."
+          },
+          {
+            "id": 5,
+            "title": "Generate and Apply Initial Migration for Enums",
+            "description": "Use Drizzle Kit to generate an SQL migration file from the schema definitions and apply it to the database to create the enum types.",
+            "dependencies": [
+              2,
+              3,
+              4
+            ],
+            "details": "Run `npx drizzle-kit generate:pg` to create a new migration file in the `./drizzle` directory. Inspect the generated SQL to confirm it contains `CREATE TYPE` statements for the four enums. Run the migration against the database.\n<info added on 2025-10-12T04:32:07.705Z>\n- Migration generated: drizzle/0003_bizarre_vivisector.sql\n- Verified CREATE TYPE statements for:\n  - file_purpose: init, mask, reference, attachment\n  - job_type: text2img, img2img, inpaint, upscale, variation\n  - message_role: user, assistant, tool, system\n  - run_status: queued, processing, succeeded, failed, canceled\n- Migration applied successfully; all enum types are created and available for use in table schemas\n</info added on 2025-10-12T04:32:07.705Z>",
+            "status": "done",
+            "testStrategy": "After applying the migration, connect to the PostgreSQL database using `psql` or a DB client. Execute `\\dT` to list custom data types and verify that `message_role`, `run_status`, `job_type`, and `file_purpose` exist and have the correct labels."
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Create 'threads' Table Schema",
+        "description": "Drizzle ORM schema and migration for the 'threads' table have been implemented and applied to store chat conversations. The schema is defined in server/src/db/schema.js and the migration drizzle/0004_chief_shen.sql creates the table, establishes the foreign key to users, and adds the owner index. The table is ready for use in the application.",
+        "status": "done",
+        "dependencies": [
+          1
+        ],
+        "priority": "high",
+        "details": "Implementation summary:\n- Schema file: server/src/db/schema.js (Drizzle ORM)\n- Imports include index to support index definition\n- Table: threads\n  - id: UUID primary key with defaultRandom() (gen_random_uuid())\n  - ownerId: UUID, NOT NULL, foreign key referencing users.id\n  - createdAt: timestamptz (withTimezone: true), NOT NULL, default now()\n  - updatedAt: timestamptz (withTimezone: true), NOT NULL, default now() (to be updated by a trigger in the future)\n- Index: idx_threads_owner on ownerId for efficient user-based thread lookups\n\nMigration:\n- File: drizzle/0004_chief_shen.sql\n- Includes: CREATE TABLE with all columns and constraints, foreign key to users, and index creation on owner_id\n- Applied successfully to PostgreSQL without errors\n\nNotes:\n- Structure follows existing schema patterns (users table)\n- Timestamps use UTC via withTimezone: true\n- Foreign key relationship is properly established",
+        "testStrategy": "Verification completed:\n- Ran the generated migration (drizzle/0004_chief_shen.sql); it applied without errors\n- Confirmed threads table exists with correct column types (UUID, timestamptz), primary key, and NOT NULL constraints\n- Verified foreign key constraint on owner_id references users(id)\n- Verified idx_threads_owner index exists on owner_id\n- Confirmed timestamps are created with withTimezone: true for UTC handling\n\nIf re-validating in a new environment:\n1) Run migrations (e.g., drizzle-kit migrate) and ensure success\n2) Inspect schema via psql or a DB tool: \\d+ threads\n3) Insert a test row and verify owner_id constraint and index behavior\n4) Ensure created_at and updated_at default to now() on insert",
+        "subtasks": []
+      },
+      {
+        "id": 3,
+        "title": "Create 'messages' Table Schema",
+        "description": "Implement the Drizzle ORM schema and migration for the 'messages' table, linking chat messages to threads and utilizing the `message_role` enum.",
+        "details": "Define the `messages` table using Drizzle ORM. The table should include:\n- `id`: UUID, primary key, auto-generated.\n- `thread_id`: UUID, foreign key referencing `threads.id`, not null, with `onDelete('cascade')`.\n- `role`: `message_role` enum type, not null.\n- `content`: Text, not null.\n- `status`: Text, default 'pending', not null (to track message state like 'processing', 'succeeded', 'failed').\n- `created_at`: `timestamptz`, default to current UTC timestamp, not null.\n- `updated_at`: `timestamptz`, default to current UTC timestamp, not null.\n\nAn index `idx_messages_thread` should be added on `thread_id`.\n\nExample Drizzle schema:\n```typescript\nimport { pgTable, uuid, text, timestamp, index } from 'drizzle-orm/pg-core';\nimport { threads } from './threads';\nimport { messageRoleEnum } from './enums';\n\nexport const messages = pgTable('messages', {\n  id: uuid('id').defaultRandom().primaryKey(),\n  threadId: uuid('thread_id').references(() => threads.id, { onDelete: 'cascade' }).notNull(),\n  role: messageRoleEnum('role').notNull(),\n  content: text('content').notNull(),\n  status: text('status').default('pending').notNull(), // Initial status for a message\n  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),\n  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),\n}, (table) => ({\n  threadIdx: index('idx_messages_thread').on(table.threadId),\n}));\n```",
+        "testStrategy": "Generate and run the Drizzle migration. Verify `messages` table creation, column types, primary key, `thread_id` foreign key constraint with cascade delete, and correct usage of `message_role` enum. Confirm `idx_messages_thread` index exists. Insert test messages into a thread to ensure data persistence.",
+        "priority": "high",
+        "dependencies": [
+          1,
+          2
+        ],
+        "status": "done",
+        "subtasks": []
+      },
+      {
+        "id": 4,
+        "title": "Create 'uploads' Table Schema",
+        "description": "Implement the Drizzle ORM schema and migration for the 'uploads' table to store metadata for user-uploaded files.",
+        "details": "Define the `uploads` table using Drizzle ORM. The table should include:\n- `id`: UUID, primary key, auto-generated.\n- `user_id`: UUID, foreign key referencing `users.id`, not null.\n- `purpose`: `file_purpose` enum type, not null (e.g., 'init', 'mask', 'reference', 'attachment').\n- `url`: Text, not null (URL to the actual file stored in external storage like S3/GCS).\n- `metadata`: JSONB, nullable (to store additional file details like filename, size, mimeType).\n- `created_at`: `timestamptz`, default to current UTC timestamp, not null.\n\nExample Drizzle schema:\n```typescript\nimport { pgTable, uuid, text, jsonb, timestamp } from 'drizzle-orm/pg-core';\n// import { users } from './users'; \nimport { filePurposeEnum } from './enums';\n\nexport const uploads = pgTable('uploads', {\n  id: uuid('id').defaultRandom().primaryKey(),\n  userId: uuid('user_id').references(() => users.id).notNull(), // Assuming users.id is defined\n  purpose: filePurposeEnum('purpose').notNull(),\n  url: text('url').notNull(),\n  metadata: jsonb('metadata'),\n  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),\n});\n```",
+        "testStrategy": "Generate and run the Drizzle migration. Verify `uploads` table creation, column types, primary key, foreign key constraint to `users`, and JSONB type for metadata. Test inserting upload records with different purposes and metadata.",
+        "priority": "medium",
+        "dependencies": [
+          1
+        ],
+        "status": "done",
+        "subtasks": []
+      },
+      {
+        "id": 5,
+        "title": "Create 'providers' and 'jobs' Table Schemas",
+        "description": "Implement Drizzle ORM schemas and migrations for the `providers` table (to manage image generation services) and the `jobs` table (to track image generation processes).",
+        "details": "Define the `providers` and `jobs` tables using Drizzle ORM.\n\n**`providers` table:**\n- `id`: UUID, primary key, auto-generated.\n- `name`: Text, not null, unique.\n- `config`: JSONB, nullable (e.g., API keys, endpoint URLs for the provider).\n- `created_at`: `timestamptz`, default to current UTC timestamp, not null.\n- `updated_at`: `timestamptz`, default to current UTC timestamp, not null.\n\n**`jobs` table:**\n- `id`: UUID, primary key, auto-generated.\n- `message_id`: UUID, foreign key referencing `messages.id`, not null, unique (1:1 optional relationship with a message triggering the job), with `onDelete('cascade')`.\n- `provider_id`: UUID, foreign key referencing `providers.id`, not null.\n- `job_type`: `job_type` enum type, not null.\n- `status`: `run_status` enum type, not null.\n- `external_id`: Text, nullable (ID from the external generation provider).\n- `parameters`: JSONB, nullable (parameters used for generation, e.g., prompt, style).\n- `created_at`: `timestamptz`, default to current UTC timestamp, not null.\n- `updated_at`: `timestamptz`, default to current UTC timestamp, not null.\n\nAn index `idx_jobs_status` should be added on `status`.\n\nExample Drizzle schema:\n```typescript\nimport { pgTable, uuid, text, jsonb, timestamp, index } from 'drizzle-orm/pg-core';\nimport { messages } from './messages';\nimport { jobTypeEnum, runStatusEnum } from './enums';\n\nexport const providers = pgTable('providers', {\n  id: uuid('id').defaultRandom().primaryKey(),\n  name: text('name').notNull().unique(),\n  config: jsonb('config'),\n  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),\n  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),\n});\n\nexport const jobs = pgTable('jobs', {\n  id: uuid('id').defaultRandom().primaryKey(),\n  messageId: uuid('message_id').references(() => messages.id, { onDelete: 'cascade' }).unique().notNull(),\n  providerId: uuid('provider_id').references(() => providers.id).notNull(),\n  jobType: jobTypeEnum('job_type').notNull(),\n  status: runStatusEnum('status').notNull(),\n  externalId: text('external_id'),\n  parameters: jsonb('parameters'),\n  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),\n  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),\n}, (table) => ({\n  statusIdx: index('idx_jobs_status').on(table.status),\n}));\n```",
+        "testStrategy": "Generate and run the Drizzle migration. Verify both tables are created correctly with specified column types, primary keys, and foreign key constraints. Ensure `jobs.message_id` has a unique constraint. Test inserting sample providers and jobs, verifying enum usage and data integrity. Confirm `idx_jobs_status` index exists.",
+        "priority": "high",
+        "dependencies": [
+          1,
+          3
+        ],
+        "status": "done",
+        "subtasks": []
+      },
+      {
+        "id": 6,
+        "title": "Create 'images' Table Schema",
+        "description": "Implement the Drizzle ORM schema and migration for the 'images' table to store generated image results, linking them to specific generation jobs.",
+        "details": "Define the `images` table using Drizzle ORM. The table should include:\n- `id`: UUID, primary key, auto-generated.\n- `job_id`: UUID, foreign key referencing `jobs.id`, not null, with `onDelete('cascade')`.\n- `url`: Text, not null (URL to the actual generated image stored in external storage).\n- `metadata`: JSONB, nullable (e.g., width, height, format, seed used).\n- `created_at`: `timestamptz`, default to current UTC timestamp, not null.\n\nAn index `idx_images_job` should be added on `job_id`.\n\nExample Drizzle schema:\n```typescript\nimport { pgTable, uuid, text, jsonb, timestamp, index } from 'drizzle-orm/pg-core';\nimport { jobs } from './jobs';\n\nexport const images = pgTable('images', {\n  id: uuid('id').defaultRandom().primaryKey(),\n  jobId: uuid('job_id').references(() => jobs.id, { onDelete: 'cascade' }).notNull(),\n  url: text('url').notNull(),\n  metadata: jsonb('metadata'),\n  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),\n}, (table) => ({\n  jobIdx: index('idx_images_job').on(table.jobId),\n}));\n```",
+        "testStrategy": "Generate and run the Drizzle migration. Verify `images` table creation, column types, primary key, and foreign key constraint to `jobs` with cascade delete. Confirm `idx_images_job` index exists. Insert sample image data linked to a job.",
+        "priority": "medium",
+        "dependencies": [
+          5
+        ],
+        "status": "done",
+        "subtasks": []
+      },
+      {
+        "id": 7,
+        "title": "Create Junction Tables Schemas",
+        "description": "Implement Drizzle ORM schemas and migrations for the many-to-many relationship tables: `job_inputs_uploads` (linking jobs to input uploads) and `message_attachments` (linking messages to attachments).",
+        "details": "Define the `job_inputs_uploads` and `message_attachments` junction tables using Drizzle ORM.\n\n**`job_inputs_uploads` table (N:M between jobs and uploads):**\n- `job_id`: UUID, foreign key referencing `jobs.id`, not null, with `onDelete('cascade')`.\n- `upload_id`: UUID, foreign key referencing `uploads.id`, not null, with `onDelete('cascade')`.\n- Composite primary key on `(job_id, upload_id)`.\n\n**`message_attachments` table (N:M between messages and uploads):**\n- `message_id`: UUID, foreign key referencing `messages.id`, not null, with `onDelete('cascade')`.\n- `upload_id`: UUID, foreign key referencing `uploads.id`, not null, with `onDelete('cascade')`.\n- Composite primary key on `(message_id, upload_id)`.\n\nExample Drizzle schema:\n```typescript\nimport { pgTable, uuid, primaryKey } from 'drizzle-orm/pg-core';\nimport { jobs } from './jobs';\nimport { uploads } from './uploads';\nimport { messages } from './messages';\n\nexport const jobInputsUploads = pgTable('job_inputs_uploads', {\n  jobId: uuid('job_id').references(() => jobs.id, { onDelete: 'cascade' }).notNull(),\n  uploadId: uuid('upload_id').references(() => uploads.id, { onDelete: 'cascade' }).notNull(),\n}, (table) => ({\n  pk: primaryKey({ columns: [table.jobId, table.uploadId] }),\n}));\n\nexport const messageAttachments = pgTable('message_attachments', {\n  messageId: uuid('message_id').references(() => messages.id, { onDelete: 'cascade' }).notNull(),\n  uploadId: uuid('upload_id').references(() => uploads.id, { onDelete: 'cascade' }).notNull(),\n}, (table) => ({\n  pk: primaryKey({ columns: [table.messageId, table.uploadId] }),\n}));\n```",
+        "testStrategy": "Generate and run the Drizzle migration. Verify both junction tables are created correctly, with their respective foreign key constraints and composite primary keys. Test inserting records into both tables to validate the relationships.",
+        "priority": "medium",
+        "dependencies": [
+          3,
+          4,
+          5
+        ],
+        "status": "done",
+        "subtasks": []
+      },
+      {
+        "id": 8,
+        "title": "Implement Database Trigger for 'threads.updated_at'",
+        "description": "Create a PostgreSQL database trigger to automatically update the `updated_at` timestamp of a `thread` whenever a new message is inserted into that thread.",
+        "details": "Create a PostgreSQL function and a trigger. The function `update_thread_updated_at` will update `threads.updated_at` to `NOW()` for the thread associated with the new message. The trigger `set_thread_updated_at` will execute this function `AFTER INSERT` on the `messages` table.\n\nThis can be done using raw SQL within a Drizzle migration script:\n```sql\nCREATE OR REPLACE FUNCTION update_thread_updated_at()\nRETURNS TRIGGER AS $$\nBEGIN\n    UPDATE threads\n    SET updated_at = NOW()\n    WHERE id = NEW.thread_id;\n    RETURN NEW;\nEND;\n$$ LANGUAGE plpgsql;\n\nCREATE TRIGGER set_thread_updated_at\nAFTER INSERT ON messages\nFOR EACH ROW\nEXECUTE FUNCTION update_thread_updated_at();\n```",
+        "testStrategy": "Insert a new message into an existing thread. Query the `threads` table and verify that the `updated_at` timestamp for that specific thread has been updated to a recent value, different from its `created_at` or previous `updated_at`.",
+        "priority": "high",
+        "dependencies": [
+          2,
+          3
+        ],
+        "status": "done",
+        "subtasks": []
+      },
+      {
+        "id": 9,
+        "title": "Implement Basic CRUD Operations with Drizzle ORM",
+        "description": "Develop and test basic Create, Read, Update, and Delete (CRUD) operations for the core entities using Drizzle ORM, ensuring data interaction capabilities.",
+        "details": "Implement Drizzle ORM service functions for:\n- **Creating**: New `threads`, `messages`, `uploads`, `providers`, `jobs`, `images`.\n- **Reading**: Retrieving single entities by `id`. Retrieving lists of entities (e.g., all messages for a `thread_id`, all jobs for a `user_id`, images for a `job_id`).\n- **Updating**: Changing `status` of messages/jobs, `content` of messages, `config` of providers.\n- **Deleting**: Removing `threads` (which should cascade to `messages`, `jobs`, `images`), individual `messages`, `uploads`.\n\nFocus on using Drizzle's typed API for insertions, selections, updates, and deletions. Ensure correct handling of foreign keys and enum types during these operations.",
+        "testStrategy": "Develop unit and integration tests for each CRUD operation. For each entity type, perform create, read (by ID and list), update, and delete actions. Assert data correctness, foreign key integrity, and proper cascade deletions where applicable. Verify enum values are correctly stored and retrieved.",
+        "priority": "medium",
+        "dependencies": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 10,
+        "title": "Verify and Optimize Database Indexing",
+        "description": "Ensure all recommended indexes are correctly applied and analyze common query performance, adding additional composite indexes if necessary.",
+        "details": "Verify that all explicitly recommended indexes are present in the database schema:\n- `idx_threads_owner` on `threads(owner_id)`\n- `idx_messages_thread` on `messages(thread_id)`\n- `idx_jobs_status` on `jobs(status)`\n- `idx_images_job` on `images(job_id)`\n\nUse PostgreSQL's `EXPLAIN ANALYZE` command to profile performance for critical queries, such as:\n- Fetching all messages for a specific thread, ordered by `created_at`.\n- Retrieving jobs by `status`.\n- Joining `threads`, `messages`, `jobs`, and `images` to display a full conversation with image generation results.\n\nConsider creating additional composite indexes if `EXPLAIN ANALYZE` reveals slow query plans, for example, `messages(thread_id, created_at DESC)` for common chat history retrieval.",
+        "testStrategy": "Run `EXPLAIN ANALYZE` on a suite of representative queries covering chat history retrieval, job status lookup, and full thread views. Analyze the query plans to confirm effective index usage and identify any bottlenecks. Compare query execution times before and after adding any new composite indexes. Ensure the added indexes do not negatively impact write performance for high-volume operations.",
+        "priority": "medium",
+        "dependencies": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "status": "pending",
+        "subtasks": []
+      }
+    ],
+    "metadata": {
+      "created": "2025-10-12T03:36:54.257Z",
+      "updated": "2025-10-12T05:03:14.213Z",
+      "description": "Tasks for be-design-database context"
+    }
   }
 }

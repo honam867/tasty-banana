@@ -1,0 +1,91 @@
+# Overview
+This document defines the database design for the Image Generator Chat App — an application that allows users to chat with an AI model to generate images in a conversational UI. The design focuses on scalability, real-time updates, and durable tracking of generation jobs, ensuring that users can navigate between threads while generation continues seamlessly.
+
+# Core Features
+- **Chat-based image generation**: Users can send prompts in chat format; AI generates images in response.
+- **Thread persistence**: Each conversation (thread) keeps history and message states.
+- **Job tracking**: Users can leave a thread and return later to find ongoing jobs still “processing.”
+- **File uploads**: Users can upload reference, mask, or initial images for generation.
+- **Multi-provider support**: Backend can use different image generation providers (e.g., Stability, DALL·E).
+
+# Technical Architecture
+## Data Models
+**Existing**: `users` (already implemented)
+
+**New tables introduced:**
+1. `threads` — stores chat conversations.
+2. `messages` — chat messages (both user and assistant).
+3. `jobs` — durable tracking of image generation processes.
+4. `images` — generated image results.
+5. `uploads` — user-uploaded files.
+6. `job_inputs_uploads` — which uploads were used in a job.
+7. `message_attachments` — which uploads are shown in a message.
+8. `providers` — information about available image generation services.
+
+**Relationships:**
+- `threads` → `messages` (1:N)
+- `messages` → `jobs` (1:1, optional)
+- `jobs` → `images` (1:N)
+- `uploads` ↔ `job_inputs_uploads` (N:M)
+- `uploads` ↔ `message_attachments` (N:M)
+
+## Status & Enums
+- `message_role`: user | assistant | tool | system  
+- `run_status`: queued | processing | succeeded | failed | canceled  
+- `job_type`: text2img | img2img | inpaint | upscale | variation  
+- `file_purpose`: init | mask | reference | attachment  
+
+## Key Data Behavior
+- Messages and jobs share lifecycle via `status` fields.
+- Assistant messages start as `processing` and flip to `succeeded` when images complete.
+- Threads automatically update `updated_at` when new messages are added.
+
+# Development Roadmap (Database-Centric)
+**Phase 1: Threads & Messages**
+- Create `threads` and `messages` tables.
+- Support text-only chat persistence.
+
+**Phase 2: Uploads & Attachments**
+- Create `uploads` and `message_attachments` tables.
+- Enable file uploads and in-message file references.
+
+**Phase 3: Generation Jobs**
+- Add `jobs` and `providers`.
+- Connect user prompts to generation requests.
+
+**Phase 4: Job Inputs & Outputs**
+- Add `job_inputs_uploads` and `images`.
+- Store input references and generation results.
+
+**Phase 5: Lifecycle Tracking**
+- Implement job status updates and message syncing.
+- Ensure progress and status persist across reloads.
+
+**Phase 6: Query Optimization**
+- Optimize thread query joining messages, jobs, and images.
+- Implement indexes for user_id, thread_id, and status lookups.
+
+# Logical Dependency Chain
+1. **Foundation:** `threads`, `messages`, `uploads` (base chat + user content)
+2. **Processing Layer:** `jobs`, `providers`
+3. **Result Layer:** `images`, `job_inputs_uploads`, `message_attachments`
+4. **UX Reliability:** persistent `status`, query joins, and triggers
+
+# Risks and Mitigations
+| Risk | Mitigation |
+|------|-------------|
+| Query performance degradation due to joins | Add composite indexes and pagination |
+| Race conditions on job completion updates | Use atomic updates and job queue system |
+| Large file uploads | Use external storage (S3/GCS) and store metadata only |
+| Schema drift between ORM and DB | Use Drizzle ORM migrations for source-of-truth schema |
+| Provider API failures | Record failed state in `jobs` + `messages`, allow retry |
+
+# Appendix
+- All IDs are UUID (consistent with Drizzle/Postgres standards)
+- Timestamps use `timestamptz` (UTC)
+- Index recommendations:
+  - `idx_threads_owner`
+  - `idx_messages_thread`
+  - `idx_jobs_status`
+  - `idx_images_job`
+- Ready to integrate into MVP backend immediately with Drizzle ORM.

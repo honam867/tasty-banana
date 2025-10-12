@@ -1,6 +1,8 @@
 {
-  "currentTag": "refactor-drizzle",
-  "lastSwitched": "2025-10-11T12:25:06.191Z",
-  "branchTagMapping": {},
+  "currentTag": "be-design-database",
+  "lastSwitched": "2025-10-12T03:36:56.573Z",
+  "branchTagMapping": {
+    "feature/design-database": "feature-design-database"
+  },
   "migrationNoticeShown": true
 }
