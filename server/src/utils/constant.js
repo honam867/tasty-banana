@@ -25,6 +25,10 @@ export const STATUS = {
   INACTIVE: "inactive",
 };
 
+export const TOKEN_USAGE = {
+  DEFAULT: 1000,
+};
+
 export const DATE = {
   DAYS: "days",
   WEEKS: "weeks",

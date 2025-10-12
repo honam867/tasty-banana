@@ -1,4 +1,5 @@
-import { pgTable, uuid, varchar, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, timestamp, integer } from 'drizzle-orm/pg-core';
+import { TOKEN_USAGE } from '../utils/constant.js';
 
 /**
  * Users Table Schema
@@ -16,6 +17,9 @@ export const users = pgTable('users', {
   // Role and status
   role: varchar('role', { length: 50 }).notNull().default('user'),
   status: varchar('status', { length: 50 }).notNull().default('active'),
+  
+  // Token usage tracking
+  tokenUsage: integer('token_usage').notNull().default(TOKEN_USAGE.DEFAULT),
   
   // Timestamps
   createdAt: timestamp('created_at').notNull().defaultNow(),
