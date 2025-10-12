@@ -5,4 +5,7 @@ export const ROUTES = {
   REGISTER: "/register",
   FORGOT_PASSWORD: "/forgot",
   CHANGE_PASSWORD: "/password/change",
+  
+  //Uploads
+  UPLOADS: "/uploads",
 };

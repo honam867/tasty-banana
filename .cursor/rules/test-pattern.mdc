@@ -1,0 +1,196 @@
+---
+description: Simple E2E testing pattern for API routes with test account authentication
+globs: server/tests/**/*.spec.js
+alwaysApply: true
+---
+
+# E2E Route Testing Pattern
+
+## Test Account Authentication
+
+- **Environment Variables:**
+  - Use `TEST_ACCOUNT_EMAIL` and `TEST_ACCOUNT_PASSWORD` from environment
+  - If not set, use default test credentials
+  
+- **Setup Pattern (Preferred: use shared helper):**
+  ```javascript
+  let app;
+  let testToken;
+  let testUserId;
+  
+  beforeAll(async () => {
+    app = createApp();
+    const { token, userId } = await getTestAccountToken(app);
+    testToken = token;
+    testUserId = userId;
+
+    expect(testToken).toBeDefined();
+  });
+  ```
+
+- **Setup Pattern (Fallback: manual when helper not applicable):**
+  ```javascript
+  const TEST_ACCOUNT = {
+    email: process.env.TEST_ACCOUNT_EMAIL || "account_for_test@gmail.com",
+    password: process.env.TEST_ACCOUNT_PASSWORD || "Password_test1509",
+  };
+
+  let app;
+  let testToken;
+  let testUserId;
+
+  beforeAll(async () => {
+    app = createApp();
+
+    let existingUser = await findUserByEmail(TEST_ACCOUNT.email);
+    if (!existingUser) {
+      existingUser = await userFactory({
+        email: TEST_ACCOUNT.email,
+        passwordPlain: TEST_ACCOUNT.password,
+        username: TEST_ACCOUNT.email.split('@')[0],
+      });
+    }
+
+    testUserId = get(existingUser, "id");
+
+    const loginResponse = await request(app)
+      .post("/api/auth/login")
+      .send({ username: TEST_ACCOUNT.email, password: TEST_ACCOUNT.password });
+
+    testToken = get(loginResponse, "body.token");
+    expect(testToken).toBeDefined();
+  });
+  ```
+
+## Test Structure
+
+- **Focus on Basic Cases:**
+  - ✅ DO: Test main success path
+  - ✅ DO: Test with valid authentication
+  - ✅ DO: Test required fields
+  - ✅ DO: Test default values
+  - ❌ DON'T: Test edge cases or complex scenarios
+  - ❌ DON'T: Test authentication failures (covered in auth tests)
+
+- **Test Organization:**
+  ```javascript
+  describe("POST /api/resource - Resource Route E2E Tests", () => {
+    // Setup (beforeAll, etc.)
+    
+    describe("Success Cases", () => {
+      it("should successfully perform main action with valid data", async () => {
+        // Arrange
+        const testData = { /* ... */ };
+        
+        // Act
+        const response = await request(app)
+          .post("/api/resource")
+          .set("Authorization", `Bearer ${testToken}`)
+          .send(testData)
+          .expect(200);
+        
+        // Assert - Response structure
+        expectSuccessShape(response, 200);
+        
+        // Assert - Response data
+        const data = get(response, "body.data");
+        expect(get(data, "id")).toBeDefined();
+        expect(get(data, "userId")).toBe(testUserId);
+      });
+      
+      it("should handle optional fields correctly", async () => {
+        // Test with minimal required fields only
+      });
+      
+      it("should handle valid variations", async () => {
+        // Test different valid input variations
+      });
+    });
+  });
+  ```
+
+## Required Imports
+
+```javascript
+import lodash from "lodash";
+const { get } = lodash;
+
+import request from "supertest";
+import { createApp } from "../utils/appFactory.js";
+import {
+  expectSuccessShape,
+  expectErrorShape,
+  getTestAccountToken,
+} from "../utils/testHelpers.js";
+```
+
+## Assertions Pattern
+
+- **Always use lodash for property access:**
+  ```javascript
+  // ✅ DO
+  const data = get(response, "body.data");
+  expect(get(data, "id")).toBeDefined();
+  
+  // ❌ DON'T
+  expect(response.body.data.id).toBeDefined();
+  ```
+
+- **Use helper functions:**
+  ```javascript
+  // ✅ DO
+  expectSuccessShape(response, 200);
+  
+  // ❌ DON'T
+  expect(response.status).toBe(200);
+  expect(response.body).toHaveProperty("success", true);
+  ```
+
+## File Uploads Pattern
+
+```javascript
+const TEST_FILE_PATH = path.join(process.cwd(), "tests", "config", "test-file.png");
+
+// Verify file exists before test
+expect(fs.existsSync(TEST_FILE_PATH)).toBe(true);
+
+const response = await request(app)
+  .post("/api/uploads")
+  .set("Authorization", `Bearer ${testToken}`)
+  .attach("file", TEST_FILE_PATH)
+  .field("purpose", "attachment")
+  .expect(200);
+```
+
+## Test Naming Convention
+
+- **Be descriptive and specific:**
+  ```javascript
+  // ✅ DO
+  it("should successfully upload file with valid data and authentication", async () => {
+  
+  // ✅ DO
+  it("should handle optional fields correctly", async () => {
+  
+  // ❌ DON'T
+  it("should work", async () => {
+  
+  // ❌ DON'T
+  it("test upload", async () => {
+  ```
+
+## What NOT to Test in E2E Route Tests
+
+- Authentication failures (test in auth.spec.js)
+- Token validation errors (test in auth.spec.js)
+- Complex business logic edge cases
+- Database constraints (test in unit tests)
+- Rate limiting
+- Permission/role-based access (unless core to the feature)
+
+## Keep It Simple
+
+- One main success path test is mandatory
+- Add 2-3 variations for optional fields or valid alternatives
+- Skip complex scenarios - focus on "happy path"
+- Skip error cases unless they're critical to the feature

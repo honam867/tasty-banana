@@ -154,18 +154,33 @@ export const uploads = pgTable('uploads', {
   // Foreign key to users table (uploader)
   userId: uuid('user_id').references(() => users.id).notNull(),
   
+  // Foreign key to threads table (optional - for thread attachments)
+  threadId: uuid('thread_id').references(() => threads.id),
+  
+  // Optional title/label for the file
+  title: varchar('title', { length: 255 }),
+  
   // Purpose/type of the uploaded file
   purpose: filePurposeEnum('purpose').notNull(),
   
-  // URL to the file in external storage (S3, GCS, etc.)
-  url: text('url').notNull(),
+  // File metadata
+  mimeType: varchar('mime_type', { length: 100 }).notNull(),
+  sizeBytes: integer('size_bytes').notNull(),
   
-  // Additional file metadata (filename, size, mimeType, etc.)
-  metadata: jsonb('metadata'),
+  // Storage details
+  storageProvider: varchar('storage_provider', { length: 50 }).notNull().default('r2'),
+  storageBucket: varchar('storage_bucket', { length: 255 }).notNull(),
+  storageKey: text('storage_key').notNull(),
+  publicUrl: text('public_url').notNull(),
   
   // Timestamp with timezone
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => ({
+  // Index on user_id for efficient lookups by user
+  userIdx: index('idx_uploads_user').on(table.userId),
+  // Index on thread_id for efficient lookups by thread
+  threadIdx: index('idx_uploads_thread').on(table.threadId),
+}));
 
 /**
  * Images Table Schema

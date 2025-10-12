@@ -455,28 +455,28 @@
       },
       {
         "id": 7,
-        "title": "Implement /v1/uploads API Route Handler",
-        "description": "Create the Express route to handle POST /v1/uploads, authenticate, validate, upload to R2, and respond with JSON.",
+        "title": "Implement /uploads API Route Handler",
+        "description": "Create the Express route to handle POST /uploads, authenticate, validate, upload to R2, and respond with JSON.",
         "details": "- Use the auth and multer middleware.\n- Validate file and metadata fields.\n- Generate storage key and upload to R2 using S3Client.\n- Construct public URL from R2_PUBLIC_BASE_URL and storage key.\n- Prepare upload row object for DB insertion.\n- Return JSON response as specified.",
-        "testStrategy": "- End-to-end test with cURL and Postman, verify correct JSON response and error handling.",
+        "testStrategy": "- Unit test with this route, verify correct JSON response and error handling.",
         "priority": "high",
         "dependencies": [
           6
         ],
-        "status": "pending",
+        "status": "done",
         "subtasks": []
       },
       {
         "id": 8,
         "title": "Integrate Database Insert for Uploads Table",
         "description": "Insert a new row into the uploads table with all required metadata after successful R2 upload.",
-        "details": "- Use the existing DB layer (e.g., Drizzle, Knex, or raw SQL).\n- Insert all required fields: id, user_id, thread_id, title, purpose, mime_type, size_bytes, storage_provider, storage_bucket, storage_key, public_url, checksum_sha256, created_at.\n- Use gen_random_uuid() or equivalent for id.\n- Return the inserted row for the API response.",
+        "details": "- Use the existing DB layer (e.g., Drizzle).\n- Insert all required fields: id, user_id, thread_id, title, purpose, mime_type, size_bytes, storage_provider, storage_bucket, storage_key, public_url, checksum_sha256, created_at.\n- Use gen_random_uuid() or equivalent for id.\n- Return the inserted row for the API response.",
         "testStrategy": "- Verify that a new row is created in the uploads table for each successful upload.\n- Check that all fields are correctly populated.",
         "priority": "high",
         "dependencies": [
           7
         ],
-        "status": "pending",
+        "status": "done",
         "subtasks": []
       },
       {
@@ -489,7 +489,7 @@
         "dependencies": [
           8
         ],
-        "status": "pending",
+        "status": "done",
         "subtasks": []
       },
       {
@@ -502,13 +502,13 @@
         "dependencies": [
           9
         ],
-        "status": "pending",
+        "status": "done",
         "subtasks": []
       }
     ],
     "metadata": {
       "created": "2025-10-12T06:59:15.308Z",
-      "updated": "2025-10-12T10:30:38.389Z",
+      "updated": "2025-10-12T15:30:36.150Z",
       "description": "Tasks for be-upload-feature context"
     }
   }

@@ -24,4 +24,5 @@ node_modules/
 # OS specific
 .DS_Store
 .cursor/commands
+.cursor/rules/postman-mcp.mdc
 .playwright-mcp

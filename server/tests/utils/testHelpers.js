@@ -3,7 +3,16 @@ const { get, merge, isNil } = lodash;
 
 import CryptoJS from "crypto-js";
 import jsonwebtoken from "jsonwebtoken";
-import { createUser } from "../../src/services/user.service.js";
+import { createUser, findUserByEmail } from "../../src/services/user.service.js";
+
+// Centralized test account config (env-first, with safe defaults)
+const envEmail = get(process, "env.TEST_ACCOUNT_EMAIL");
+const envPassword = get(process, "env.TEST_ACCOUNT_PASSWORD");
+const envUsername = get(process, "env.TEST_ACCOUNT_USERNAME");
+
+const TEST_ACCOUNT_EMAIL = envEmail;
+const TEST_ACCOUNT_PASSWORD = envPassword;
+const TEST_ACCOUNT_USERNAME = envUsername || (TEST_ACCOUNT_EMAIL.includes("@") ? TEST_ACCOUNT_EMAIL.split("@")[0] : TEST_ACCOUNT_EMAIL);
 
 /**
  * Encrypt password using the same method as the application
@@ -134,4 +143,61 @@ export const expectValidToken = (token, expectedUserId = null) => {
   }
 
   return decoded;
+};
+
+/**
+ * Get or create the test account for upload and other authenticated tests
+ * @returns {Promise<Object>} Object with user data and plain password
+ */
+export const getTestAccount = async () => {
+  const accountEmail = TEST_ACCOUNT_EMAIL;
+  const accountPassword = TEST_ACCOUNT_PASSWORD;
+  const accountUsername = TEST_ACCOUNT_USERNAME;
+
+  // Check if test account exists
+  let existingUser = await findUserByEmail(accountEmail);
+  
+  if (!existingUser) {
+    // Create test account if it doesn't exist
+    existingUser = await userFactory({
+      email: accountEmail,
+      passwordPlain: accountPassword,
+      username: accountUsername
+    });
+  }
+
+  return merge({}, existingUser, { plainPassword: accountPassword });
+};
+
+/**
+ * Get authentication token for the test account
+ * @param {Object} app - Express app instance
+ * @returns {Promise<Object>} Object with token, userId, and user data
+ */
+export const getTestAccountToken = async (app) => {
+  const request = (await import("supertest")).default;
+  
+  const accountEmail = TEST_ACCOUNT_EMAIL;
+  const accountPassword = TEST_ACCOUNT_PASSWORD;
+
+  // Ensure test account exists
+  const testUser = await getTestAccount();
+
+  // Login to get authentication token
+  // Note: Login endpoint expects "username" field but accepts email
+  const loginResponse = await request(app)
+    .post("/api/auth/login")
+    .send({
+      username: accountEmail,
+      password: accountPassword
+    });
+
+  const token = get(loginResponse, "body.token");
+  const userId = get(testUser, "id");
+
+  return {
+    token,
+    userId,
+    user: testUser
+  };
 };
