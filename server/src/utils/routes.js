@@ -8,4 +8,8 @@ export const ROUTES = {
   
   //Uploads
   UPLOADS: "/uploads",
+  
+  //Threads
+  THREADS: "/threads",
+  THREAD_MESSAGES: "/:threadId/messages",
 };

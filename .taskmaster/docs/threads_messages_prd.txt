@@ -1,0 +1,178 @@
+threads_messages_prd.txt
+====================================
+
+# Overview
+Define the core Threads & Messages API for the Image Generator Chat App. This enables authenticated users to create conversation threads and post text messages. This phase is text-only (no image generation) and sets a clean foundation for later job processing and image results.
+
+---
+
+# Goals (MVP)
+- Create and list user-owned threads
+- Create and list messages within a thread
+- Basic pagination/filters
+- Consistent JSON response shape
+- Use existing auth middleware (JWT) and Drizzle schema
+
+---
+
+# Non-Goals (Explicitly Skipped)
+- Assistant auto-replies or model integration
+- Job creation/updates and image outputs
+- Real-time websockets/streaming
+- Full-text search
+- Roles/permissions beyond owner checks
+
+---
+
+# Auth
+- Require `verifyToken` on all routes
+- Use `req.user.id` for ownership and writes
+
+---
+
+# Data Model (Already in schema)
+- `threads(id, owner_id, created_at, updated_at)`
+- `messages(id, thread_id, role, content, status, created_at, updated_at)`
+  - `role`: user | assistant | tool | system (MVP: only `user` allowed to create via API)
+  - `status`: keep simple for MVP (default handled by schema)
+
+---
+
+# API Design
+Base path prefix: `/api`
+
+## Threads
+1) POST `/threads`
+   - Body: `{ title?: string }` (optional; stored later if added to schema, otherwise ignore)
+   - Auth: required
+   - Creates an empty thread for the authenticated user
+   - Response 201:
+   ```json
+   {
+     "success": true,
+     "status": 201,
+     "message": "Thread created",
+     "data": {
+       "id": "uuid",
+       "ownerId": "uuid",
+       "createdAt": "iso",
+       "updatedAt": "iso"
+     }
+   }
+   ```
+
+2) GET `/threads?limit=20&cursor=<uuid>`
+   - Lists current user's threads (most recent first)
+   - Pagination: `limit` (1..50, default 20), `cursor` (id of last item)
+   - Response 200:
+   ```json
+   {
+     "success": true,
+     "status": 200,
+     "message": "OK",
+     "data": {
+       "items": [
+         {"id":"uuid","ownerId":"uuid","createdAt":"iso","updatedAt":"iso"}
+       ],
+       "nextCursor": "uuid|null"
+     }
+   }
+   ```
+
+3) GET `/threads/:threadId`
+   - Returns a single thread (must be owned by requester)
+   - Response 200 same shape as POST, `data` contains one thread object
+
+## Messages
+4) POST `/threads/:threadId/messages`
+   - Body:
+   ```json
+   { "content": "string", "role": "user" }
+   ```
+   - Constraints: `role` must be `user` for MVP; `content` 1..4000 chars
+   - Response 201:
+   ```json
+   {
+     "success": true,
+     "status": 201,
+     "message": "Message created",
+     "data": {
+       "id": "uuid",
+       "threadId": "uuid",
+       "role": "user",
+       "content": "...",
+       "status": "pending",
+       "createdAt": "iso",
+       "updatedAt": "iso"
+     }
+   }
+   ```
+
+5) GET `/threads/:threadId/messages?limit=50&cursor=<uuid>`
+   - Lists messages for a thread (owned by requester)
+   - Order: newest first
+   - Response 200 similar to threads list
+
+---
+
+# Validation & Errors
+- 400: invalid body (`content` missing/too long, `role` not `user`)
+- 401: unauthenticated
+- 403: thread not owned by user
+- 404: thread/message not found
+- 415: unsupported content type when applicable
+- 500: unhandled server errors
+
+All responses follow:
+```json
+{ "success": boolean, "status": number, "message": string, "data"?: any }
+```
+
+---
+
+# Controller Notes (Implementation Hints)
+- Use lodash `get`, `isEmpty`, etc. Never optional chaining
+- Read `req.user.id` for ownership; enforce ownership on read/write
+- Use Drizzle models from `server/src/db/schema.js`
+- Reuse helpers in `utils/response.js` and constants in `utils/constant.js`
+
+---
+
+# DB Mapping
+- Create thread: insert into `threads(owner_id)` -> return row
+- List threads: filter by `owner_id`, order by `created_at` desc, cursor pagination
+- Create message: insert into `messages(thread_id, role, content)` with `role='user'`
+- List messages: filter by `thread_id`, order by `created_at` desc, cursor pagination
+
+---
+
+# Security
+- Only owner can view/create within a thread
+- Enforce max content length (e.g., 4000)
+- Rate limit (optional later)
+
+---
+
+# Test Checklist (MVP)
+- [ ] Create thread → 201
+- [ ] List threads (auth) → 200 with only user-owned items
+- [ ] Create message (role=user) → 201
+- [ ] List messages (auth, owner) → 200
+- [ ] Invalid body → 400
+- [ ] Unauthorized → 401
+- [ ] Forbidden (accessing others' thread) → 403
+- [ ] Not found → 404
+
+---
+
+# Future Enhancements
+// Removed to keep MVP spec ready-to-use without extras
+
+---
+
+# Done Criteria (MVP)
+- Endpoints deployed and reachable
+- Ownership and validation enforced
+- Correct JSON response shape
+- Basic pagination works
+

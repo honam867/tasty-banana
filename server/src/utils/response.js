@@ -20,7 +20,7 @@ export const sendUnauthenticated = (res) => {
   res.status(HTTP_STATUS.UNAUTHENTICATED).json({
     success: false,
     status: 401,
-    msg: "Unauthenticated",
+    message: "Token is required",
   });
 };
 
