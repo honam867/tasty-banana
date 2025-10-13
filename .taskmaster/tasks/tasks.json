@@ -511,5 +511,288 @@
       "updated": "2025-10-12T15:30:36.150Z",
       "description": "Tasks for be-upload-feature context"
     }
+  },
+  "be-threads_messages": {
+    "tasks": [
+      {
+        "id": 1,
+        "title": "Set Up Threads & Messages API Route Structure",
+        "description": "Establish the Express.js API route handlers for threads and messages under the /api prefix.",
+        "details": "Create Express.js routers for /api/threads and /api/threads/:threadId/messages. Ensure all routes are registered under the /api prefix. Use existing project structure and conventions. Import and use the verifyToken middleware for all routes.",
+        "testStrategy": "Verify that all endpoints exist and return 404 if not implemented. Check that unauthenticated requests are rejected with 401.",
+        "priority": "high",
+        "dependencies": [],
+        "status": "done",
+        "subtasks": []
+      },
+      {
+        "id": 2,
+        "title": "Integrate Auth Middleware (verifyToken) on All Routes",
+        "description": "Ensure all thread and message endpoints require authentication using the verifyToken middleware.",
+        "details": "Apply verifyToken to all relevant routes. Extract req.user.id from the middleware for use in controllers. Reject unauthenticated requests with a 401 response using the helpers from utils/response.js.",
+        "testStrategy": "Send requests without a token and verify 401 is returned. Send requests with a valid token and verify access is granted.",
+        "priority": "high",
+        "dependencies": [
+          1
+        ],
+        "status": "done",
+        "subtasks": []
+      },
+      {
+        "id": 3,
+        "title": "Implement POST /threads (Create Thread)",
+        "description": "Allow authenticated users to create a new thread. Ignore title for now.",
+        "details": "Validate request body (ignore title if present). Insert a new row into threads with owner_id = req.user.id using Drizzle models. Return the created thread in the specified JSON response shape. Use helpers from utils/response.js for formatting.",
+        "testStrategy": "Send valid and invalid requests. Verify 201 response and correct data. Check that thread is owned by the user.",
+        "priority": "high",
+        "dependencies": [
+          2
+        ],
+        "status": "done",
+        "subtasks": []
+      },
+      {
+        "id": 4,
+        "title": "Implement GET /threads (List User Threads with Pagination)",
+        "description": "List all threads owned by the authenticated user, with cursor-based pagination.",
+        "details": "Parse limit (default 20, max 50) and cursor from query. Query threads table for owner_id = req.user.id, order by created_at desc, use cursor for pagination. Return items and nextCursor in the specified JSON response shape.",
+        "testStrategy": "Create multiple threads, list them with various limits and cursors, and verify correct pagination and ownership.",
+        "priority": "high",
+        "dependencies": [
+          3
+        ],
+        "status": "done",
+        "subtasks": []
+      },
+      {
+        "id": 5,
+        "title": "Implement GET /threads/:threadId (Get Single Thread, Ownership Enforced)",
+        "description": "Fetch a single thread by ID, ensuring it is owned by the requester.",
+        "details": "Extract threadId from params. Query threads where id = threadId and owner_id = req.user.id. If not found, return 404. If found, return thread in the specified JSON response shape.",
+        "testStrategy": "Try to fetch own and others' threads. Verify 200 for own, 403/404 for others'.",
+        "priority": "high",
+        "dependencies": [
+          4
+        ],
+        "status": "done",
+        "subtasks": []
+      },
+      {
+        "id": 6,
+        "title": "Implement POST /threads/:threadId/messages (Create Message in Thread)",
+        "description": "Allow users to post a text message in a thread they own. Only 'user' role allowed.",
+        "details": "Validate body: content (1..4000 chars), role must be 'user'. Check thread ownership. Insert message into messages table with thread_id, role, content. Return created message in specified JSON shape. Use lodash get/isEmpty for validation.",
+        "testStrategy": "Test valid/invalid bodies, role not 'user', content too long/short, posting to others' threads. Verify correct error codes and success for valid input.",
+        "priority": "high",
+        "dependencies": [
+          5
+        ],
+        "status": "done",
+        "subtasks": []
+      },
+      {
+        "id": 7,
+        "title": "Implement GET /threads/:threadId/messages (List Messages with Pagination)",
+        "description": "Implemented listing messages for a thread with ownership enforcement and cursor-based pagination. Endpoint is live and fully tested.",
+        "status": "done",
+        "dependencies": [
+          6
+        ],
+        "priority": "high",
+        "details": "- Endpoint: GET /api/threads/:threadId/messages (threads router path '/:threadId/messages')\n- Ownership: Validates that the authenticated user owns the thread via isThreadOwnedByUser(); returns 403 if not owned\n- Pagination: Cursor-based pagination with limit parsed from query (default 50, max 50). Cursor parsed from query params\n- Ordering: Messages ordered by createdAt DESC (newest first)\n- Service: messages.service.js provides findMessagesByThreadIdWithPagination(threadId, { limit, cursor }) and returns { items, nextCursor }\n- Controller: messages.controller.js listThreadMessages() parses query, validates ownership, delegates to service, and returns standardized success response with data { items, nextCursor }\n- Routes: threads.route.js wires GET '/:threadId/messages' to listThreadMessages and removes placeholder 404\n- Response shape: success with data containing { items, nextCursor }",
+        "testStrategy": "Added comprehensive tests in server/tests/threads/threads.spec.js covering: (1) successfully list messages for own thread, (2) default limit of 50, (3) custom limit parameter, (4) max limit enforcement at 50, (5) ordering by createdAt descending, (6) cursor-based pagination across pages, (7) 403 for unauthorized (not owned) thread. All tests pass locally (34 total).",
+        "subtasks": []
+      },
+      {
+        "id": 8,
+        "title": "Implement Consistent JSON Response Formatting and Error Handling",
+        "description": "Ensure all endpoints use the correct JSON response shape and handle errors as specified.",
+        "details": "Use helpers from utils/response.js for all responses. Map errors to correct HTTP codes (400, 401, 403, 404, 415, 500). Ensure all responses include success, status, message, and data (if applicable).",
+        "testStrategy": "Trigger all error cases (invalid body, unauthorized, forbidden, not found, etc.) and verify response format and codes.",
+        "priority": "high",
+        "dependencies": [
+          7
+        ],
+        "status": "done",
+        "subtasks": []
+      },
+      {
+        "id": 9,
+        "title": "Enforce Data Validation and Security Constraints",
+        "description": "Strictly validate all input and enforce security constraints (ownership, content length, allowed roles).",
+        "details": "Use lodash get/isEmpty for validation. Enforce content length (1..4000), role='user' for message creation. Ensure only thread owners can access or modify threads/messages. Prepare for future rate limiting.",
+        "testStrategy": "Attempt to bypass validation and security checks. Verify all constraints are enforced and no unauthorized access is possible.",
+        "priority": "medium",
+        "dependencies": [
+          8
+        ],
+        "status": "done",
+        "subtasks": []
+      },
+      {
+        "id": 10,
+        "title": "Write Integration and Unit Tests for Threads & Messages API",
+        "description": "Implement automated tests covering all endpoints, validation, and error cases as per the MVP test checklist.",
+        "details": "Use the project's preferred test framework (e.g., Jest, Supertest). Cover: create/list threads, create/list messages, invalid input, unauthorized, forbidden, not found. Mock auth and DB as needed.",
+        "testStrategy": "Run all tests and ensure 100% pass rate. Check coverage for all endpoints and error scenarios.",
+        "priority": "medium",
+        "dependencies": [
+          9
+        ],
+        "status": "done",
+        "subtasks": []
+      }
+    ],
+    "metadata": {
+      "created": "2025-10-13T14:56:41.173Z",
+      "updated": "2025-10-13T16:46:27.594Z",
+      "description": "Tasks for be-threads_messages context"
+    }
+  },
+  "be-image_generator_nano_banana": {
+    "tasks": [
+      {
+        "id": 1,
+        "title": "Set Up Provider Configuration and ENV Variables",
+        "description": "Configure environment variables and seed the providers table for the Nano Banana provider.",
+        "details": "Add the following ENV variables: PROVIDER_NANOBANANA_API_KEY, PROVIDER_NANOBANANA_BASE_URL, PROVIDER_NANOBANANA_MODEL, PROVIDER_TIMEOUT_MS. Seed the 'providers' table with a config JSON referencing these variables. Ensure the config is loaded at runtime and accessible to the provider adapter.",
+        "testStrategy": "Check that the provider config loads correctly and that the seeded provider row is accessible in the database. Validate ENV variable presence at server startup.",
+        "priority": "high",
+        "dependencies": [],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 2,
+        "title": "Implement Provider Adapter (nanoBanana.adapter.js)",
+        "description": "Create an adapter module to abstract the Nano Banana provider API.",
+        "details": "Implement 'submitGeneration' and 'pollGeneration' functions in src/services/providers/nanoBanana.adapter.js. Use an HTTP client with a 45s timeout and 1 retry on 5xx errors. Map provider statuses to internal run_status. Handle both synchronous and asynchronous responses. For img2img/inpaint, load image buffers from uploads as needed.",
+        "testStrategy": "Unit test the adapter with mocked HTTP responses for all job types and error scenarios. Validate status mapping and retry logic.",
+        "priority": "high",
+        "dependencies": [
+          1
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 3,
+        "title": "Implement POST /threads/:threadId/generations Endpoint",
+        "description": "Create the endpoint to submit image generation jobs from user prompts.",
+        "details": "Add a POST endpoint at /api/threads/:threadId/generations. Authenticate via verifyToken. Validate request body (prompt, jobType, width, height, etc.). Enforce ownership of thread and uploads. For img2img/inpaint, require initUploadId/maskUploadId. Create an assistant message (status=processing) and a job row (status=queued).",
+        "testStrategy": "Integration test: submit valid and invalid requests, check DB for correct job/message creation, and validate error responses (400, 401, 403).",
+        "priority": "high",
+        "dependencies": [
+          1
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 4,
+        "title": "Implement Job Processing Worker",
+        "description": "Create a background worker to process queued jobs and interact with the provider adapter.",
+        "details": "Implement a worker (inline or background task) that picks up jobs with status=queued, updates status to processing, calls submitGeneration, and polls for completion. On success, store image(s) to R2, create images row(s), and update job/message statuses. On failure, set job/message to failed with error details.",
+        "testStrategy": "Simulate job queue with various job types and provider responses. Verify correct DB updates and error handling.",
+        "priority": "high",
+        "dependencies": [
+          2,
+          3
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 5,
+        "title": "Integrate R2 Storage for Image Persistence",
+        "description": "Store generated images in R2 and persist metadata in the images table.",
+        "details": "On successful generation, upload image bytes to R2 using the key format 'g/{user_id}/{yyyy}/{mm}/{dd}/{ulid()}.png'. Store public URLs using R2_PUBLIC_BASE_URL. Create an images row linked to the job, including metadata (width, height, seed, model, provider latency).",
+        "testStrategy": "Verify that images are uploaded to R2, URLs are correct, and images rows are created with accurate metadata.",
+        "priority": "medium",
+        "dependencies": [
+          4
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 6,
+        "title": "Implement GET /jobs/:jobId Endpoint",
+        "description": "Expose an endpoint to poll job status and retrieve job details.",
+        "details": "Add a GET endpoint at /api/jobs/:jobId. Authenticate and enforce ownership via linked message/thread. Return job status, externalId, and parameters. Map internal statuses to API response. Handle not found and forbidden cases.",
+        "testStrategy": "Test with jobs in all statuses, verify correct data and error responses (200, 403, 404).",
+        "priority": "medium",
+        "dependencies": [
+          3,
+          4
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 7,
+        "title": "Update Messages API to Reflect Generation Status",
+        "description": "Ensure /threads/:threadId/messages includes assistant messages with up-to-date generation statuses.",
+        "details": "Modify the messages API to include assistant messages created by job submissions, reflecting their current status (processing, succeeded, failed) and image URLs/metadata when available.",
+        "testStrategy": "Fetch messages for a thread with jobs in various statuses, verify assistant messages reflect correct status and data.",
+        "priority": "medium",
+        "dependencies": [
+          3,
+          4,
+          5
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 8,
+        "title": "Implement Input Validation and Ownership Enforcement",
+        "description": "Strictly validate all incoming data and enforce resource ownership.",
+        "details": "Ensure prompt length, width/height values, and jobType are validated. For img2img/inpaint, require initUploadId/maskUploadId and check ownership of thread and uploads. Use existing verifyToken and threads.owner_id checks.",
+        "testStrategy": "Submit requests with invalid/missing fields, wrong ownership, and verify 400/403 errors are returned.",
+        "priority": "medium",
+        "dependencies": [
+          3
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 9,
+        "title": "Standardize Error Handling and API Responses",
+        "description": "Ensure all endpoints return errors in the specified JSON shape and handle all error cases.",
+        "details": "Implement error handling middleware or patterns to return { success, status, message } for all error cases: 400, 401, 403, 404, 422, 500. Map provider errors and validation failures appropriately.",
+        "testStrategy": "Force each error condition and verify API responses match the required format and status codes.",
+        "priority": "medium",
+        "dependencies": [
+          3,
+          6
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 10,
+        "title": "End-to-End Testing and MVP Checklist Validation",
+        "description": "Test the full flow from job submission to image retrieval, including all edge cases.",
+        "details": "Write integration tests covering: job submission, polling, image persistence, message updates, input validation, forbidden access, provider failures, and error handling. Confirm all MVP checklist items are met.",
+        "testStrategy": "Run automated and manual tests for all checklist scenarios. Validate DB, R2, and API outputs for correctness.",
+        "priority": "high",
+        "dependencies": [
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "status": "pending",
+        "subtasks": []
+      }
+    ],
+    "metadata": {
+      "created": "2025-10-13T14:57:48.757Z",
+      "updated": "2025-10-13T15:12:59.796Z",
+      "description": "Tasks for be-image_generator_nano_banana context"
+    }
   }
 }
