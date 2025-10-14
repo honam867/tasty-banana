@@ -1,6 +1,6 @@
 {
-  "currentTag": "be-threads_messages",
-  "lastSwitched": "2025-10-13T15:13:55.500Z",
+  "currentTag": "image_generation_integration",
+  "lastSwitched": "2025-10-14T16:32:18.657Z",
   "branchTagMapping": {
     "feature/design-database": "feature-design-database"
   },

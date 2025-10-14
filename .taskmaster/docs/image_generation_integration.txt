@@ -1,0 +1,670 @@
+image_generation_integration.txt
+====================================
+
+# Overview
+Integrate **Google Gemini 2.5 Flash Image API** as the primary text-to-image provider for the Image Generator Chat App. This phase connects user messages to image generation jobs, tracks job status asynchronously, and stores generated image results. This is the core feature that transforms the chat app into an image generation platform.
+
+---
+
+# Goals (MVP)
+- Configure and authenticate with Google Gemini 2.5 Flash API via Vertex AI
+- Create image generation jobs when users send messages with text prompts
+- Track job lifecycle (queued → processing → succeeded/failed)
+- Store generated images in the database with proper relationships
+- Return image URLs to users via the existing message structure
+- Handle async job processing (jobs continue even if user leaves thread)
+- Implement robust error handling for API failures
+- Calculate and track token usage for billing/monitoring
+
+---
+
+# Non-Goals (Explicitly Skipped)
+- Multiple provider support (use Gemini 2.5 Flash only)
+- Provider switching UI or routing logic
+- Advanced image parameters (use defaults for MVP)
+- Image editing features (img2img, inpaint, upscale, variation)
+- Real-time websocket updates (polling is acceptable)
+- Queue system with Redis/Bull (simple async is fine)
+- Retry logic for failed jobs (manual retry only)
+
+---
+
+# Prerequisites (Already Implemented)
+- ✅ Threads & Messages API (Phase 1)
+- ✅ Uploads feature (Phase 2)
+- ✅ Database schema with jobs, providers, images tables
+- ✅ Auth middleware (verifyToken)
+- ✅ Consistent JSON response format
+
+---
+
+# Google Cloud Setup
+
+## 1. Enable Vertex AI API
+- Navigate to Google Cloud Console → APIs & Services
+- Enable "Vertex AI API" for your project
+- Note your **Project ID**
+
+## 2. Create Service Account
+- Go to IAM & Admin → Service Accounts
+- Create new service account with name: `image-gen-service`
+- Grant role: **Vertex AI User**
+- Create and download JSON key file
+- Store securely (NEVER commit to git)
+
+## 3. Environment Variables
+Add to `.env` in server root:
+```env
+# Google Gemini 2.5 Flash Image API (Vertex AI)
+GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/service-account.json
+GOOGLE_CLOUD_PROJECT=your-project-id
+VERTEX_AI_LOCATION=us-central1
+
+# Image Generation Settings
+IMAGE_GEN_MODEL=gemini-2.5-flash
+IMAGE_GEN_TIMEOUT_MS=60000
+IMAGE_GEN_DEFAULT_WIDTH=1024
+IMAGE_GEN_DEFAULT_HEIGHT=1024
+```
+
+## 4. Install Required Dependencies
+```bash
+npm install google-auth-library @google-cloud/aiplatform
+```
+
+---
+
+# Data Model Integration
+
+## Providers Table
+Create a default Gemini provider record on first boot:
+```js
+// Pseudo-code for seed/migration
+const provider = await db.insert(providers).values({
+  name: 'gemini-2.5-flash',
+  config: {
+    model: 'gemini-2.5-flash',
+    endpoint: 'https://us-central1-aiplatform.googleapis.com/v1',
+    description: 'Google Gemini 2.5 Flash - Fast text-to-image generation'
+  }
+}).returning();
+```
+
+## Jobs Table Workflow
+1. **User creates message** (role=user, content=prompt)
+2. **System creates job** linked to that message:
+   - `message_id`: UUID of user message
+   - `provider_id`: UUID of Gemini provider
+   - `job_type`: 'text2img'
+   - `status`: 'queued'
+   - `parameters`: JSON with prompt, width, height
+3. **System creates assistant message** (role=assistant, content='', status='processing')
+4. **Job processes asynchronously**:
+   - Update job `status` to 'processing'
+   - Call Gemini API
+   - On success:
+     - Update job `status` to 'succeeded'
+     - Insert into `images` table with URL and metadata
+     - Update assistant message `status` to 'succeeded'
+     - Update assistant message `content` with image description
+   - On failure:
+     - Update job `status` to 'failed'
+     - Update assistant message `status` to 'failed'
+     - Update assistant message `content` with error message
+
+---
+
+# API Design
+
+## 1. POST /api/threads/:threadId/messages (MODIFIED)
+**Changes to existing endpoint:**
+- After creating user message, automatically create a job if content is text prompt
+- Create assistant message with status='processing'
+- Trigger async job processing
+- Return immediately (do not wait for image generation)
+
+**Enhanced Response (201):**
+```json
+{
+  "success": true,
+  "status": 201,
+  "message": "Message created, job queued",
+  "data": {
+    "message": {
+      "id": "user-message-uuid",
+      "threadId": "thread-uuid",
+      "role": "user",
+      "content": "A sunset over mountains",
+      "status": "pending",
+      "createdAt": "2025-10-14T10:00:00.000Z"
+    },
+    "job": {
+      "id": "job-uuid",
+      "messageId": "user-message-uuid",
+      "providerId": "provider-uuid",
+      "jobType": "text2img",
+      "status": "queued",
+      "externalId": null,
+      "parameters": {
+        "prompt": "A sunset over mountains",
+        "width": 1024,
+        "height": 1024
+      },
+      "createdAt": "2025-10-14T10:00:00.000Z"
+    }
+  }
+}
+```
+
+## 2. GET /api/threads/:threadId/messages (ENHANCED)
+**Changes to existing endpoint:**
+- Join with jobs and images tables
+- Include job status and generated images in response
+
+**Enhanced Response (200):**
+```json
+{
+  "success": true,
+  "status": 200,
+  "message": "OK",
+  "data": {
+    "items": [
+      {
+        "id": "assistant-message-uuid",
+        "threadId": "thread-uuid",
+        "role": "assistant",
+        "content": "Generated: A sunset over mountains",
+        "status": "succeeded",
+        "createdAt": "2025-10-14T10:00:05.000Z",
+        "job": {
+          "id": "job-uuid",
+          "status": "succeeded",
+          "jobType": "text2img",
+          "images": [
+            {
+              "id": "image-uuid",
+              "url": "https://storage.googleapis.com/...",
+              "metadata": {
+                "width": 1024,
+                "height": 1024,
+                "mimeType": "image/png"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "user-message-uuid",
+        "threadId": "thread-uuid",
+        "role": "user",
+        "content": "A sunset over mountains",
+        "status": "pending",
+        "createdAt": "2025-10-14T10:00:00.000Z",
+        "job": null
+      }
+    ],
+    "nextCursor": null
+  }
+}
+```
+
+## 3. GET /api/jobs/:jobId (NEW)
+**Purpose:** Check status of a specific job
+
+**Auth:** Required
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "status": 200,
+  "message": "OK",
+  "data": {
+    "id": "job-uuid",
+    "messageId": "message-uuid",
+    "providerId": "provider-uuid",
+    "jobType": "text2img",
+    "status": "succeeded",
+    "externalId": "gemini-job-id",
+    "parameters": {
+      "prompt": "A sunset over mountains",
+      "width": 1024,
+      "height": 1024
+    },
+    "images": [
+      {
+        "id": "image-uuid",
+        "url": "https://storage.googleapis.com/...",
+        "metadata": {
+          "width": 1024,
+          "height": 1024,
+          "mimeType": "image/png"
+        }
+      }
+    ],
+    "createdAt": "2025-10-14T10:00:00.000Z",
+    "updatedAt": "2025-10-14T10:00:05.000Z"
+  }
+}
+```
+
+---
+
+# Implementation Architecture
+
+## Service Layer Structure
+
+### 1. `gemini.service.js` (NEW)
+**Purpose:** Handle all Gemini API interactions
+
+**Key Functions:**
+```js
+// Initialize Gemini client
+export const initGeminiClient = () => { ... }
+
+// Generate image from text prompt
+export const generateImage = async (prompt, options = {}) => {
+  // Returns: { imageUrl, metadata, usageMetadata }
+}
+
+// Get authenticated client
+const getAuthenticatedClient = async () => { ... }
+
+// Build request payload
+const buildGenerateRequest = (prompt, options) => { ... }
+
+// Parse Gemini API response
+const parseImageResponse = (response) => { ... }
+```
+
+**Error Handling:**
+- Map Gemini API errors to standard format
+- Handle rate limits (429) gracefully
+- Log all errors with context
+- Return structured error objects
+
+### 2. `jobs.service.js` (NEW)
+**Purpose:** Manage job lifecycle and database operations
+
+**Key Functions:**
+```js
+// Create a new job
+export const createJob = async (messageId, providerId, parameters) => { ... }
+
+// Update job status
+export const updateJobStatus = async (jobId, status, updates = {}) => { ... }
+
+// Process a job (main orchestrator)
+export const processJob = async (jobId) => {
+  // 1. Update status to 'processing'
+  // 2. Call gemini.service.generateImage()
+  // 3. Store result in images table
+  // 4. Update job status to 'succeeded'
+  // 5. Update assistant message
+  // Handle errors → set status to 'failed'
+}
+
+// Get job by ID with images
+export const getJobById = async (jobId) => { ... }
+
+// List jobs by thread
+export const getJobsByThread = async (threadId) => { ... }
+```
+
+### 3. `providers.service.js` (NEW)
+**Purpose:** Manage provider records
+
+**Key Functions:**
+```js
+// Get or create default Gemini provider
+export const getDefaultProvider = async () => { ... }
+
+// Get provider by name
+export const getProviderByName = async (name) => { ... }
+```
+
+---
+
+# Job Processing Flow
+
+## Synchronous Flow (API Request)
+```
+User → POST /api/threads/:threadId/messages
+  ↓
+1. Create user message (role=user, content=prompt)
+  ↓
+2. Get default provider (Gemini)
+  ↓
+3. Create job (status=queued, linked to message)
+  ↓
+4. Create assistant message (role=assistant, status=processing)
+  ↓
+5. Trigger async job processing (do not await)
+  ↓
+6. Return 201 response immediately
+```
+
+## Asynchronous Flow (Background Processing)
+```
+processJob(jobId) triggered
+  ↓
+1. Update job status to 'processing'
+  ↓
+2. Call gemini.service.generateImage(prompt)
+  ↓
+3. Gemini API processes (may take 10-60 seconds)
+  ↓
+4. Receive response with imageUrl and metadata
+  ↓
+5. Insert image record into images table
+  ↓
+6. Update job status to 'succeeded'
+  ↓
+7. Update assistant message:
+   - status = 'succeeded'
+   - content = "Generated image for: {prompt}"
+  ↓
+Done (user sees result on next poll/refresh)
+```
+
+---
+
+# Error Handling Patterns
+
+## Gemini API Errors
+```js
+try {
+  const result = await generateImage(prompt);
+} catch (error) {
+  // Map to standard error format
+  if (get(error, 'response.status') === 429) {
+    // Rate limit
+    return errorResponse('Rate limit exceeded, please try again later', 429);
+  }
+  if (get(error, 'response.status') === 400) {
+    // Invalid prompt
+    return errorResponse('Invalid prompt provided', 400);
+  }
+  // Generic error
+  return errorResponse('Image generation failed', 500);
+}
+```
+
+## Job Processing Errors
+```js
+async function processJob(jobId) {
+  try {
+    // ... processing logic
+  } catch (error) {
+    // Update job and message to failed state
+    await updateJobStatus(jobId, 'failed', {
+      error: get(error, 'message', 'Unknown error')
+    });
+    
+    await updateMessage(assistantMessageId, {
+      status: 'failed',
+      content: `Failed to generate image: ${get(error, 'message')}`
+    });
+    
+    // Log error for monitoring
+    console.error('[Job Processing Error]', {
+      jobId,
+      error: get(error, 'message'),
+      stack: get(error, 'stack')
+    });
+  }
+}
+```
+
+---
+
+# Token Usage Tracking
+
+**Capture usage metadata from Gemini API:**
+```js
+const response = await geminiClient.generateContent(requestBody);
+
+// Extract usage metadata
+const usageMetadata = get(response, 'data.usageMetadata', {});
+const tokenUsage = {
+  promptTokens: get(usageMetadata, 'promptTokenCount', 0),
+  totalTokens: get(usageMetadata, 'totalTokenCount', 0),
+  imagesGenerated: 1
+};
+
+// Store in job parameters for future reference
+await updateJob(jobId, {
+  parameters: {
+    ...existingParameters,
+    usageMetadata: tokenUsage
+  }
+});
+
+// Update user token usage (see Token Usage Tracking PRD)
+await incrementUserTokenUsage(userId, tokenUsage.totalTokens);
+```
+
+---
+
+# Database Queries (Drizzle ORM)
+
+## Create Job
+```js
+import { jobs } from '../db/schema.js';
+import { db } from '../db/drizzle.js';
+
+const job = await db.insert(jobs).values({
+  messageId: messageUuid,
+  providerId: providerUuid,
+  jobType: 'text2img',
+  status: 'queued',
+  parameters: {
+    prompt,
+    width: 1024,
+    height: 1024
+  }
+}).returning();
+```
+
+## Update Job Status
+```js
+import { eq } from 'drizzle-orm';
+
+await db.update(jobs)
+  .set({ 
+    status: 'succeeded',
+    updatedAt: new Date()
+  })
+  .where(eq(jobs.id, jobId));
+```
+
+## Get Job with Images
+```js
+import { jobs, images } from '../db/schema.js';
+import { eq } from 'drizzle-orm';
+
+const jobWithImages = await db
+  .select()
+  .from(jobs)
+  .leftJoin(images, eq(jobs.id, images.jobId))
+  .where(eq(jobs.id, jobId));
+```
+
+---
+
+# Environment Variable Reference
+
+```env
+# Required
+GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+GOOGLE_CLOUD_PROJECT=your-project-id
+VERTEX_AI_LOCATION=us-central1
+
+# Optional (with defaults)
+IMAGE_GEN_MODEL=gemini-2.5-flash
+IMAGE_GEN_TIMEOUT_MS=60000
+IMAGE_GEN_DEFAULT_WIDTH=1024
+IMAGE_GEN_DEFAULT_HEIGHT=1024
+IMAGE_GEN_MAX_PROMPT_LENGTH=1000
+```
+
+---
+
+# Security Considerations
+
+1. **API Keys Protection:**
+   - NEVER expose service account JSON in client
+   - NEVER commit credentials to git
+   - Use environment variables only
+   - Restrict service account permissions to minimum required
+
+2. **Prompt Validation:**
+   - Sanitize user input
+   - Enforce max prompt length (1000 chars)
+   - Filter prohibited content (optional, basic for MVP)
+
+3. **Rate Limiting:**
+   - Implement per-user request limits
+   - Track API quotas
+   - Handle 429 errors gracefully
+
+4. **Authorization:**
+   - Verify user owns thread before creating job
+   - Enforce ownership on job status checks
+
+---
+
+# Testing Strategy
+
+## Unit Tests
+```js
+// gemini.service.spec.js
+describe('Gemini Service', () => {
+  it('should generate image from prompt', async () => {
+    // Mock Gemini API response
+    // Test generateImage function
+  });
+
+  it('should handle API errors gracefully', async () => {
+    // Mock error response
+    // Verify error mapping
+  });
+});
+
+// jobs.service.spec.js
+describe('Jobs Service', () => {
+  it('should create job with correct parameters', async () => { ... });
+  it('should update job status', async () => { ... });
+  it('should process job end-to-end', async () => { ... });
+});
+```
+
+## Integration Tests
+```js
+// messages.spec.js (enhanced)
+describe('POST /api/threads/:threadId/messages', () => {
+  it('should create message and queue job', async () => {
+    const response = await request(app)
+      .post(`/api/threads/${threadId}/messages`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ content: 'A test prompt', role: 'user' })
+      .expect(201);
+
+    expect(get(response, 'body.data.job')).toBeDefined();
+    expect(get(response, 'body.data.job.status')).toBe('queued');
+  });
+});
+```
+
+## E2E Tests
+- Mock Gemini API to avoid real API calls and costs
+- Test full flow: create message → job queued → job processes → image stored
+- Verify error handling for API failures
+
+---
+
+# Monitoring & Logging
+
+**Log all critical events:**
+```js
+// Job created
+console.log('[Job Created]', { jobId, messageId, prompt });
+
+// Job processing started
+console.log('[Job Processing]', { jobId, status: 'processing' });
+
+// Job succeeded
+console.log('[Job Success]', { jobId, imageUrl, tokenUsage });
+
+// Job failed
+console.error('[Job Failed]', { jobId, error: errorMessage });
+
+// API rate limit hit
+console.warn('[Rate Limit]', { endpoint, userId, timestamp });
+```
+
+---
+
+# Pricing & Cost Monitoring
+
+**Based on Gemini 2.5 Flash pricing (as of June 2024):**
+- ~$0.01–$0.03 per image (varies by resolution)
+- Track costs per user/thread
+- Set up Google Cloud billing alerts
+- Implement usage caps per user (e.g., 100 images/month for free tier)
+
+**Budget Protection:**
+- Set daily/monthly spending limits in Google Cloud
+- Track usage in real-time via token usage system
+- Display cost estimates to users (optional)
+
+---
+
+# Migration & Deployment
+
+## 1. Database Migration
+- Ensure providers, jobs, images tables exist (already in schema)
+- Seed default Gemini provider record
+
+## 2. Environment Setup
+- Add all required env vars to production
+- Upload service account JSON to secure location
+- Test authentication in staging
+
+## 3. Deployment Steps
+1. Deploy new service files (gemini, jobs, providers)
+2. Update messages controller to create jobs
+3. Deploy enhanced GET /messages endpoint
+4. Test in staging environment
+5. Monitor logs and errors
+6. Roll out to production
+
+---
+
+# Done Criteria (MVP)
+
+- ✅ Gemini 2.5 Flash API configured and authenticated
+- ✅ Default provider seeded in database
+- ✅ Jobs created automatically when user sends message
+- ✅ Async job processing implemented
+- ✅ Generated images stored in database
+- ✅ Image URLs returned via GET /messages endpoint
+- ✅ Error handling for all API failure scenarios
+- ✅ Token usage tracked and logged
+- ✅ Integration tests pass with mocked API
+- ✅ Documentation complete
+
+---
+
+# Future Enhancements (Post-MVP)
+
+- Multiple provider support (Stability AI, DALL-E)
+- Advanced image parameters (style, aspect ratio, negative prompts)
+- Image editing features (img2img, inpaint, upscale)
+- Real-time websocket updates for job status
+- Queue system with Redis/Bull for scalability
+- Automatic retry for failed jobs
+- Content moderation and safety filters
+- Cost analytics dashboard
+- User-facing credit system
+

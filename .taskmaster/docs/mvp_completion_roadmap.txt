@@ -1,0 +1,395 @@
+MVP Completion Roadmap - Tasty Banana Image Generator
+====================================
+
+# Project Status Overview
+
+## ✅ Completed Phases
+
+### Phase 1: Database Design & Schema
+**Status:** Complete ✓
+**PRD:** `design_database.txt`
+**Implementation:**
+- All tables created (users, threads, messages, jobs, providers, images, uploads)
+- Relationships established
+- Indexes optimized
+- Migrations complete
+
+### Phase 2: Threads & Messages API
+**Status:** Complete ✓
+**PRD:** `threads_messages_prd.txt`
+**Implementation:**
+- POST /api/threads
+- GET /api/threads (with pagination)
+- GET /api/threads/:threadId
+- POST /api/threads/:threadId/messages
+- GET /api/threads/:threadId/messages (with pagination)
+- Full test coverage
+- All 10 tasks completed
+
+### Phase 3: File Uploads
+**Status:** Complete ✓
+**PRD:** `upload_feature.txt`
+**Implementation:**
+- POST /api/uploads
+- Cloudflare R2 integration
+- File validation & security
+- Public URL generation
+- Test coverage complete
+
+---
+
+## 🚧 Remaining Phases for MVP
+
+### Phase 4: Image Generation Integration
+**Status:** Ready to Implement
+**PRD:** `image_generation_integration.txt` (CREATED TODAY)
+
+**Key Components:**
+1. **Google Cloud Setup**
+   - Enable Vertex AI API
+   - Create service account
+   - Set up authentication
+   - Configure environment variables
+
+2. **Service Layer**
+   - `gemini.service.js` - API integration
+   - `jobs.service.js` - Job lifecycle management
+   - `providers.service.js` - Provider records
+
+3. **API Enhancements**
+   - Modify POST /threads/:threadId/messages to create jobs
+   - Enhance GET /threads/:threadId/messages to include images
+   - Add GET /jobs/:jobId endpoint
+
+4. **Async Processing**
+   - Job queue implementation
+   - Status tracking (queued → processing → succeeded/failed)
+   - Error handling & recovery
+
+5. **Database Integration**
+   - Seed default Gemini provider
+   - Link jobs to messages
+   - Store generated images
+
+**Estimated Effort:** 15-20 tasks
+**Dependencies:** None (all prerequisites complete)
+
+### Phase 5: Token Usage Tracking
+**Status:** Ready to Implement
+**PRD:** `token_usage_tracking.txt` (CREATED TODAY)
+
+**Key Components:**
+1. **Service Layer**
+   - `usage.service.js` - Usage tracking logic
+   - Token increment functions
+   - Usage summary calculations
+
+2. **Database Migration (Optional)**
+   - Create `usage_logs` table for detailed tracking
+   - Add indexes for performance
+
+3. **API Endpoints**
+   - Enhance GET /users/me with usage stats
+   - Add GET /users/me/usage endpoint
+
+4. **Integration**
+   - Track usage during job processing
+   - Extract metadata from Gemini API responses
+   - Update user tokenUsage field
+
+5. **Quota Enforcement (Optional)**
+   - Middleware for quota checks
+   - Soft limits with warnings
+   - Hard limits (block requests)
+
+**Estimated Effort:** 8-12 tasks
+**Dependencies:** Phase 4 (needs image generation to track)
+
+---
+
+## 📊 Implementation Order
+
+### Recommended Approach: Sequential
+
+```
+Phase 4 (Image Generation) → Phase 5 (Token Tracking)
+```
+
+**Rationale:**
+- Token tracking depends on having image generation working
+- Image generation is the core MVP feature
+- Token tracking enhances/monitors image generation
+
+### Alternative Approach: Parallel (Advanced)
+
+```
+Phase 4 (Core Image Gen) ← → Phase 5 (Basic Usage Tracking)
+```
+
+**Rationale:**
+- Implement basic token tracking in parallel
+- Integrate fully after image generation is stable
+- Faster MVP completion (if multiple developers)
+
+---
+
+## 🎯 MVP Feature Checklist
+
+### Core Features (Must Have)
+- [✅] User authentication & registration
+- [✅] Chat threads creation & listing
+- [✅] Text message sending & receiving
+- [✅] File uploads to cloud storage
+- [🚧] **Text-to-image generation via Gemini API**
+- [🚧] **Job status tracking (async)**
+- [🚧] **Generated image display in chat**
+- [🚧] **Token usage tracking per user**
+- [🚧] **Basic usage quota enforcement**
+
+### Infrastructure (Must Have)
+- [✅] PostgreSQL database with Drizzle ORM
+- [✅] Express.js API server
+- [✅] JWT authentication
+- [✅] Cloudflare R2 storage
+- [🚧] **Google Cloud Vertex AI integration**
+- [🚧] **Async job processing**
+
+### Quality Assurance (Must Have)
+- [✅] Unit tests for services
+- [✅] Integration tests for APIs
+- [✅] E2E tests for critical flows
+- [🚧] **Tests for image generation**
+- [🚧] **Tests for usage tracking**
+
+---
+
+## 📦 Environment Setup Required
+
+### New Environment Variables (Phase 4)
+```env
+# Google Gemini 2.5 Flash Image API
+GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+GOOGLE_CLOUD_PROJECT=your-project-id
+VERTEX_AI_LOCATION=us-central1
+
+# Image Generation Settings
+IMAGE_GEN_MODEL=gemini-2.5-flash
+IMAGE_GEN_TIMEOUT_MS=60000
+IMAGE_GEN_DEFAULT_WIDTH=1024
+IMAGE_GEN_DEFAULT_HEIGHT=1024
+```
+
+### New Dependencies
+```bash
+npm install google-auth-library @google-cloud/aiplatform
+```
+
+---
+
+## 💰 Cost Considerations
+
+### Gemini 2.5 Flash Pricing (as of June 2024)
+- **Text-to-Image:** ~$0.01–$0.03 per image
+- **Text Processing:** ~$0.01 per 1000 tokens
+
+### Example Monthly Cost (100 users, 10 images each)
+- Total images: 1,000
+- Image generation: $10–$30/month
+- Text processing: ~$1/month
+- **Total: $11–$31/month** (API only)
+
+### Budget Protection
+- Set daily/monthly spending limits in Google Cloud
+- Implement per-user quotas (e.g., 100 free images/month)
+- Track usage in real-time
+- Set up billing alerts
+
+---
+
+## 🔄 Development Workflow
+
+### Phase 4: Image Generation (Example Task Breakdown)
+
+1. **Setup & Configuration (2-3 tasks)**
+   - Set up Google Cloud project & Vertex AI
+   - Create service account & download credentials
+   - Add environment variables & install dependencies
+
+2. **Provider & Database (2-3 tasks)**
+   - Create providers.service.js
+   - Seed default Gemini provider
+   - Add provider retrieval functions
+
+3. **Gemini API Integration (3-4 tasks)**
+   - Create gemini.service.js
+   - Implement authentication
+   - Implement generateImage function
+   - Add error handling & logging
+
+4. **Jobs Management (4-5 tasks)**
+   - Create jobs.service.js
+   - Implement createJob function
+   - Implement updateJobStatus function
+   - Implement processJob function (main orchestrator)
+   - Add job status retrieval
+
+5. **API Route Modifications (2-3 tasks)**
+   - Modify POST /threads/:threadId/messages to create jobs
+   - Enhance GET /threads/:threadId/messages to include images
+   - Add GET /jobs/:jobId endpoint
+
+6. **Testing (2-3 tasks)**
+   - Unit tests for services
+   - Integration tests for enhanced routes
+   - E2E tests with mocked Gemini API
+
+### Phase 5: Token Usage (Example Task Breakdown)
+
+1. **Service Layer (2-3 tasks)**
+   - Create usage.service.js
+   - Implement incrementUserTokenUsage function
+   - Implement getUserUsageSummary function
+
+2. **Database (1-2 tasks)**
+   - Optional: Create usage_logs table migration
+   - Add indexes for performance
+
+3. **Integration (2-3 tasks)**
+   - Integrate usage tracking into processJob
+   - Extract usage metadata from Gemini responses
+   - Update user tokenUsage field
+
+4. **API Endpoints (2-3 tasks)**
+   - Enhance GET /users/me with usage stats
+   - Create GET /users/me/usage endpoint
+   - Optional: Add quota check middleware
+
+5. **Testing (1-2 tasks)**
+   - Unit tests for usage service
+   - Integration tests for usage endpoints
+
+---
+
+## 📈 Success Metrics (MVP)
+
+### Functional Metrics
+- ✅ User can create account & login
+- ✅ User can create chat threads
+- ✅ User can send text messages
+- ✅ User can upload files
+- 🎯 **User can generate images from text prompts**
+- 🎯 **User can see job status (queued/processing/succeeded/failed)**
+- 🎯 **User can view generated images in chat**
+- 🎯 **User can check their token usage**
+
+### Technical Metrics
+- ✅ All API endpoints return consistent JSON format
+- ✅ All routes protected with authentication
+- ✅ Database properly normalized & indexed
+- 🎯 **Image generation completes in <60 seconds**
+- 🎯 **Jobs persist across server restarts**
+- 🎯 **Token usage accurately tracked**
+- 🎯 **Error rate <5% for API calls**
+
+### Quality Metrics
+- ✅ Test coverage >80% for existing features
+- 🎯 **Test coverage >80% for image generation**
+- 🎯 **Test coverage >80% for usage tracking**
+- 🎯 **All critical paths have E2E tests**
+
+---
+
+## 🚀 Next Steps
+
+### Immediate Actions (Today)
+1. ✅ **Review Gemini API research** (COMPLETED)
+2. ✅ **Review image_generation_integration.txt PRD** (CREATED)
+3. ✅ **Review token_usage_tracking.txt PRD** (CREATED)
+
+### Phase 4 Start (Tomorrow)
+1. **Parse PRD:** `task-master parse-prd image_generation_integration.txt --tag=be-image-gen`
+2. **Analyze Complexity:** `task-master analyze-complexity --tag=be-image-gen --research`
+3. **Expand Tasks:** `task-master expand --all --tag=be-image-gen --research --force`
+4. **Begin Implementation:** `task-master next --tag=be-image-gen`
+
+### Phase 5 Start (After Phase 4)
+1. **Parse PRD:** `task-master parse-prd token_usage_tracking.txt --tag=be-token-usage`
+2. **Analyze Complexity:** `task-master analyze-complexity --tag=be-token-usage --research`
+3. **Expand Tasks:** `task-master expand --all --tag=be-token-usage --research --force`
+4. **Begin Implementation:** `task-master next --tag=be-token-usage`
+
+---
+
+## 📚 Documentation Reference
+
+### Created Today
+- ✅ `image_generation_integration.txt` - Phase 4 PRD
+- ✅ `token_usage_tracking.txt` - Phase 5 PRD
+- ✅ Research saved: `.taskmaster/docs/research/research_*.md`
+
+### Existing PRDs
+- ✅ `design_database.txt` - Database design (completed)
+- ✅ `threads_messages_prd.txt` - Threads API (completed)
+- ✅ `upload_feature.txt` - Uploads (completed)
+
+---
+
+## 🎓 Key Learnings from Research
+
+### Gemini 2.5 Flash Image API
+- Uses Google Vertex AI platform
+- OAuth 2.0 authentication via service account
+- Pricing: ~$0.01–$0.03 per image
+- Returns image URLs (not inline base64)
+- Provides usage metadata for token tracking
+- Rate limits: ~60-120 RPM per project
+- Response includes usageMetadata object
+
+### Best Practices Applied
+- Service account authentication (secure)
+- Async job processing (scalable)
+- Proper error handling (robust)
+- Token usage tracking (cost control)
+- Test with mocked API (avoid costs)
+- Environment-based configuration (flexible)
+
+---
+
+## ✨ Post-MVP Enhancements
+
+### Phase 6+ (Future)
+- Multiple AI provider support (Stability AI, DALL-E)
+- Advanced image parameters (style, aspect ratio)
+- Image editing (img2img, inpaint, upscale)
+- Real-time websocket updates
+- Queue system with Redis/Bull
+- Content moderation & safety
+- Usage analytics dashboard
+- Payment integration (Stripe)
+
+---
+
+## 🎯 Definition of Done (MVP)
+
+The MVP is considered **COMPLETE** when:
+
+1. ✅ All database tables implemented
+2. ✅ Threads & messages API working
+3. ✅ File uploads working
+4. 🎯 **Image generation from text prompts working**
+5. 🎯 **Job status tracking working**
+6. 🎯 **Token usage tracking working**
+7. 🎯 **All tests passing (unit + integration + E2E)**
+8. 🎯 **Documentation complete**
+9. 🎯 **Deployed to staging environment**
+10. 🎯 **Manual QA completed**
+
+---
+
+**Status:** 3 of 4 phases complete (75%)
+**Remaining Work:** Image generation + Token tracking
+**Estimated Time:** 2-3 weeks (solo developer) or 1-2 weeks (pair)
+**Blocker:** None - all prerequisites ready
+
+**Ready to proceed!** 🚀
+

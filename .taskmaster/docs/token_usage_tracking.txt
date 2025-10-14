@@ -1,0 +1,705 @@
+token_usage_tracking.txt
+====================================
+
+# Overview
+Implement a comprehensive **token usage tracking system** for the Image Generator Chat App. This system monitors and records API consumption (text prompts, image generation) per user, enabling billing, quota management, and cost analytics. Usage is calculated in real-time during API calls and stored in the database for reporting and enforcement.
+
+---
+
+# Goals (MVP)
+- Track token usage from Gemini API responses
+- Increment user token usage on each API call
+- Store usage history for analytics and billing
+- Enforce simple usage quotas (optional soft limits)
+- Provide usage summary via API endpoint
+- Log all usage events for monitoring
+- Simple, performant implementation (no complex queue)
+
+---
+
+# Non-Goals (Explicitly Skipped)
+- Complex billing/payment integration
+- Usage-based pricing tiers
+- Real-time usage dashboards (basic endpoint is fine)
+- Historical usage analytics with time-series DB
+- Multi-currency pricing
+- Invoice generation
+- Refund/credit system
+- Advanced quota management (hard limits are post-MVP)
+
+---
+
+# Prerequisites (Already Implemented)
+- ✅ Users table with `tokenUsage` field (integer)
+- ✅ Auth middleware (verifyToken)
+- ✅ Gemini API integration (returns usageMetadata)
+- ✅ Consistent JSON response format
+
+---
+
+# Data Model
+
+## Users Table (Already Exists)
+```js
+export const users = pgTable('users', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  username: varchar('username', { length: 255 }).notNull().unique(),
+  email: varchar('email', { length: 255 }).notNull().unique(),
+  password: varchar('password', { length: 500 }).notNull(),
+  role: varchar('role', { length: 50 }).notNull().default('user'),
+  status: varchar('status', { length: 50 }).notNull().default('active'),
+  
+  // Token usage tracking (cumulative total)
+  tokenUsage: integer('token_usage').notNull().default(TOKEN_USAGE.DEFAULT),
+  
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+```
+
+## Usage Logs Table (NEW - Optional for MVP)
+**Purpose:** Store detailed usage history per API call
+```js
+export const usageLogs = pgTable('usage_logs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  
+  // User who made the API call
+  userId: uuid('user_id').references(() => users.id).notNull(),
+  
+  // Associated entities (optional)
+  threadId: uuid('thread_id').references(() => threads.id),
+  messageId: uuid('message_id').references(() => messages.id),
+  jobId: uuid('job_id').references(() => jobs.id),
+  
+  // Usage details
+  operation: varchar('operation', { length: 50 }).notNull(), // e.g., 'text2img', 'message'
+  promptTokens: integer('prompt_tokens').notNull().default(0),
+  completionTokens: integer('completion_tokens').notNull().default(0),
+  totalTokens: integer('total_tokens').notNull(),
+  
+  // Cost tracking (optional)
+  estimatedCostUsd: numeric('estimated_cost_usd', { precision: 10, scale: 6 }),
+  
+  // Provider info
+  provider: varchar('provider', { length: 50 }).notNull().default('gemini'),
+  model: varchar('model', { length: 100 }).notNull(),
+  
+  // Timestamp
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  // Indexes for efficient queries
+  userIdx: index('idx_usage_logs_user').on(table.userId),
+  createdAtIdx: index('idx_usage_logs_created').on(table.createdAt),
+}));
+```
+
+**Note:** For MVP, usage_logs table is OPTIONAL. You can track everything via the `tokenUsage` field in users table and job parameters.
+
+---
+
+# Constants (Already Defined)
+
+**File:** `src/utils/constant.js`
+```js
+export const TOKEN_USAGE = {
+  DEFAULT: 0,              // Starting tokens for new users
+  FREE_TIER_LIMIT: 10000,  // Free tier limit (adjust as needed)
+  WARNING_THRESHOLD: 8000, // Warn user at 80% of free tier
+};
+```
+
+---
+
+# API Design
+
+## 1. Enhanced POST /api/threads/:threadId/messages
+**Changes:**
+- After creating message and job, track token usage
+- Extract `usageMetadata` from Gemini API response
+- Increment user's `tokenUsage` field
+- Log usage event (optional)
+
+**No change to response format** (usage tracking is transparent)
+
+## 2. GET /api/users/me (ENHANCED)
+**Changes:**
+- Include token usage in user profile response
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "status": 200,
+  "message": "OK",
+  "data": {
+    "id": "user-uuid",
+    "username": "john_doe",
+    "email": "john@example.com",
+    "role": "user",
+    "status": "active",
+    "tokenUsage": 5420,
+    "usageStats": {
+      "used": 5420,
+      "limit": 10000,
+      "remaining": 4580,
+      "percentageUsed": 54.2
+    },
+    "createdAt": "2025-01-01T00:00:00.000Z"
+  }
+}
+```
+
+## 3. GET /api/users/me/usage (NEW)
+**Purpose:** Get detailed usage information and history
+
+**Auth:** Required
+
+**Query Parameters:**
+- `startDate` (optional): ISO date string
+- `endDate` (optional): ISO date string
+- `limit` (optional): Number of recent logs to return (default: 50)
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "status": 200,
+  "message": "OK",
+  "data": {
+    "summary": {
+      "totalTokens": 5420,
+      "limit": 10000,
+      "remaining": 4580,
+      "percentageUsed": 54.2,
+      "estimatedCostUsd": 0.054
+    },
+    "recentUsage": [
+      {
+        "id": "log-uuid",
+        "operation": "text2img",
+        "promptTokens": 15,
+        "completionTokens": 0,
+        "totalTokens": 15,
+        "provider": "gemini",
+        "model": "gemini-2.5-flash",
+        "createdAt": "2025-10-14T10:00:00.000Z"
+      }
+    ]
+  }
+}
+```
+
+---
+
+# Implementation Architecture
+
+## Service Layer Structure
+
+### 1. `usage.service.js` (NEW)
+**Purpose:** Handle all token usage tracking logic
+
+**Key Functions:**
+```js
+import lodash from 'lodash';
+const { get, isNil } = lodash;
+
+import { db } from '../db/drizzle.js';
+import { users, usageLogs } from '../db/schema.js';
+import { eq } from 'drizzle-orm';
+
+/**
+ * Increment user token usage
+ * @param {string} userId - User UUID
+ * @param {number} tokens - Number of tokens to add
+ * @param {object} metadata - Optional usage metadata
+ * @returns {Promise<object>} Updated user record
+ */
+export const incrementUserTokenUsage = async (userId, tokens, metadata = {}) => {
+  if (isNil(userId) || tokens <= 0) {
+    throw new Error('Invalid userId or token count');
+  }
+
+  // Update user token usage (atomic increment)
+  const updatedUser = await db
+    .update(users)
+    .set({
+      tokenUsage: sql`${users.tokenUsage} + ${tokens}`,
+      updatedAt: new Date()
+    })
+    .where(eq(users.id, userId))
+    .returning();
+
+  const user = get(updatedUser, '[0]');
+  if (isNil(user)) {
+    throw new Error('User not found');
+  }
+
+  // Optionally log usage event
+  if (get(metadata, 'logUsage', false)) {
+    await logUsageEvent({
+      userId,
+      totalTokens: tokens,
+      ...metadata
+    });
+  }
+
+  return user;
+};
+
+/**
+ * Log a usage event to usage_logs table
+ * @param {object} usageData - Usage event data
+ * @returns {Promise<object>} Created log record
+ */
+export const logUsageEvent = async (usageData) => {
+  const log = await db.insert(usageLogs).values({
+    userId: get(usageData, 'userId'),
+    threadId: get(usageData, 'threadId'),
+    messageId: get(usageData, 'messageId'),
+    jobId: get(usageData, 'jobId'),
+    operation: get(usageData, 'operation', 'unknown'),
+    promptTokens: get(usageData, 'promptTokens', 0),
+    completionTokens: get(usageData, 'completionTokens', 0),
+    totalTokens: get(usageData, 'totalTokens'),
+    estimatedCostUsd: get(usageData, 'estimatedCostUsd'),
+    provider: get(usageData, 'provider', 'gemini'),
+    model: get(usageData, 'model', 'gemini-2.5-flash'),
+  }).returning();
+
+  return get(log, '[0]');
+};
+
+/**
+ * Get user usage summary
+ * @param {string} userId - User UUID
+ * @returns {Promise<object>} Usage summary
+ */
+export const getUserUsageSummary = async (userId) => {
+  const user = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  const userData = get(user, '[0]');
+  if (isNil(userData)) {
+    throw new Error('User not found');
+  }
+
+  const totalTokens = get(userData, 'tokenUsage', 0);
+  const limit = TOKEN_USAGE.FREE_TIER_LIMIT;
+  const remaining = Math.max(0, limit - totalTokens);
+  const percentageUsed = (totalTokens / limit) * 100;
+
+  // Estimate cost (rough calculation)
+  // Gemini pricing: ~$0.01 per 1000 tokens (adjust as needed)
+  const estimatedCostUsd = (totalTokens / 1000) * 0.01;
+
+  return {
+    totalTokens,
+    limit,
+    remaining,
+    percentageUsed: Math.round(percentageUsed * 100) / 100,
+    estimatedCostUsd: Math.round(estimatedCostUsd * 1000) / 1000
+  };
+};
+
+/**
+ * Get recent usage logs for a user
+ * @param {string} userId - User UUID
+ * @param {number} limit - Number of logs to return
+ * @returns {Promise<array>} Array of usage log records
+ */
+export const getRecentUsageLogs = async (userId, limit = 50) => {
+  const logs = await db
+    .select()
+    .from(usageLogs)
+    .where(eq(usageLogs.userId, userId))
+    .orderBy(desc(usageLogs.createdAt))
+    .limit(limit);
+
+  return logs;
+};
+
+/**
+ * Check if user has exceeded quota
+ * @param {string} userId - User UUID
+ * @returns {Promise<boolean>} True if quota exceeded
+ */
+export const hasExceededQuota = async (userId) => {
+  const summary = await getUserUsageSummary(userId);
+  return get(summary, 'totalTokens', 0) >= TOKEN_USAGE.FREE_TIER_LIMIT;
+};
+```
+
+---
+
+# Integration with Image Generation Flow
+
+## In `jobs.service.js` (processJob function):
+```js
+import { incrementUserTokenUsage } from './usage.service.js';
+
+export const processJob = async (jobId) => {
+  try {
+    // 1. Update status to 'processing'
+    await updateJobStatus(jobId, 'processing');
+
+    // 2. Get job details
+    const job = await getJobById(jobId);
+    const prompt = get(job, 'parameters.prompt');
+    const userId = get(job, 'message.thread.ownerId'); // Get user ID from thread
+
+    // 3. Call Gemini API
+    const result = await generateImage(prompt, {
+      width: get(job, 'parameters.width', 1024),
+      height: get(job, 'parameters.height', 1024)
+    });
+
+    // 4. Extract usage metadata from Gemini response
+    const usageMetadata = get(result, 'usageMetadata', {});
+    const totalTokens = get(usageMetadata, 'totalTokenCount', 0);
+    const promptTokens = get(usageMetadata, 'promptTokenCount', 0);
+
+    // 5. Track token usage
+    if (totalTokens > 0) {
+      await incrementUserTokenUsage(userId, totalTokens, {
+        logUsage: true,
+        operation: 'text2img',
+        promptTokens,
+        completionTokens: 0,
+        provider: 'gemini',
+        model: 'gemini-2.5-flash',
+        threadId: get(job, 'message.threadId'),
+        messageId: get(job, 'messageId'),
+        jobId: get(job, 'id')
+      });
+    }
+
+    // 6. Store image result
+    const image = await db.insert(images).values({
+      jobId: get(job, 'id'),
+      url: get(result, 'imageUrl'),
+      metadata: {
+        width: get(result, 'width'),
+        height: get(result, 'height'),
+        mimeType: get(result, 'mimeType'),
+        usageMetadata // Store for reference
+      }
+    }).returning();
+
+    // 7. Update job status to 'succeeded'
+    await updateJobStatus(jobId, 'succeeded', {
+      parameters: {
+        ...get(job, 'parameters'),
+        usageMetadata
+      }
+    });
+
+    // 8. Update assistant message
+    await updateMessage(get(job, 'assistantMessageId'), {
+      status: 'succeeded',
+      content: `Generated image for: ${prompt}`
+    });
+
+  } catch (error) {
+    // Handle errors...
+  }
+};
+```
+
+---
+
+# Middleware (Optional - Quota Enforcement)
+
+**File:** `src/middlewares/quotaCheck.js`
+```js
+import lodash from 'lodash';
+const { get } = lodash;
+
+import { hasExceededQuota } from '../services/usage.service.js';
+import { errorResponse } from '../utils/response.js';
+
+/**
+ * Middleware to check if user has exceeded quota
+ * Use on image generation endpoints only
+ */
+export const checkQuota = async (req, res, next) => {
+  try {
+    const userId = get(req, 'user.id');
+    
+    const exceeded = await hasExceededQuota(userId);
+    
+    if (exceeded) {
+      return res.status(429).json(
+        errorResponse('Token quota exceeded. Please upgrade your plan.', 429)
+      );
+    }
+    
+    next();
+  } catch (error) {
+    console.error('[Quota Check Error]', error);
+    // Don't block on quota check errors - allow request through
+    next();
+  }
+};
+```
+
+**Usage in routes:**
+```js
+import { checkQuota } from '../middlewares/quotaCheck.js';
+
+// Apply to POST /threads/:threadId/messages route
+router.post('/threads/:threadId/messages', 
+  verifyToken, 
+  checkQuota,  // Add quota check
+  createMessage
+);
+```
+
+---
+
+# Controller Implementation
+
+## 1. Enhanced `auth.controller.js` (GET /users/me)
+```js
+import { getUserUsageSummary } from '../services/usage.service.js';
+
+export const getCurrentUser = async (req, res) => {
+  try {
+    const userId = get(req, 'user.id');
+    
+    const user = await getUserById(userId);
+    if (isNil(user)) {
+      return res.status(404).json(errorResponse('User not found', 404));
+    }
+    
+    // Get usage stats
+    const usageStats = await getUserUsageSummary(userId);
+    
+    return res.status(200).json(successResponse('OK', 200, {
+      id: get(user, 'id'),
+      username: get(user, 'username'),
+      email: get(user, 'email'),
+      role: get(user, 'role'),
+      status: get(user, 'status'),
+      tokenUsage: get(user, 'tokenUsage'),
+      usageStats,
+      createdAt: get(user, 'createdAt')
+    }));
+  } catch (error) {
+    const message = get(error, 'message', 'Server error');
+    return res.status(500).json(errorResponse(message, 500));
+  }
+};
+```
+
+## 2. New `usage.controller.js`
+```js
+import lodash from 'lodash';
+const { get, isNil } = lodash;
+
+import { 
+  getUserUsageSummary, 
+  getRecentUsageLogs 
+} from '../services/usage.service.js';
+import { successResponse, errorResponse } from '../utils/response.js';
+
+/**
+ * GET /api/users/me/usage
+ * Get user's token usage details
+ */
+export const getUserUsage = async (req, res) => {
+  try {
+    const userId = get(req, 'user.id');
+    const limit = parseInt(get(req, 'query.limit', '50'));
+    
+    // Get summary
+    const summary = await getUserUsageSummary(userId);
+    
+    // Get recent logs
+    const recentUsage = await getRecentUsageLogs(userId, limit);
+    
+    return res.status(200).json(successResponse('OK', 200, {
+      summary,
+      recentUsage
+    }));
+  } catch (error) {
+    const message = get(error, 'message', 'Server error');
+    return res.status(500).json(errorResponse(message, 500));
+  }
+};
+```
+
+---
+
+# Database Migration (Optional - Usage Logs Table)
+
+**File:** `drizzle/XXXX_create_usage_logs.sql`
+```sql
+-- Create usage_logs table for detailed usage tracking
+CREATE TABLE IF NOT EXISTS "usage_logs" (
+  "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  "user_id" UUID NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+  "thread_id" UUID REFERENCES "threads"("id") ON DELETE SET NULL,
+  "message_id" UUID REFERENCES "messages"("id") ON DELETE SET NULL,
+  "job_id" UUID REFERENCES "jobs"("id") ON DELETE SET NULL,
+  "operation" VARCHAR(50) NOT NULL,
+  "prompt_tokens" INTEGER NOT NULL DEFAULT 0,
+  "completion_tokens" INTEGER NOT NULL DEFAULT 0,
+  "total_tokens" INTEGER NOT NULL,
+  "estimated_cost_usd" NUMERIC(10, 6),
+  "provider" VARCHAR(50) NOT NULL DEFAULT 'gemini',
+  "model" VARCHAR(100) NOT NULL,
+  "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Create indexes for efficient queries
+CREATE INDEX IF NOT EXISTS "idx_usage_logs_user" ON "usage_logs"("user_id");
+CREATE INDEX IF NOT EXISTS "idx_usage_logs_created" ON "usage_logs"("created_at");
+```
+
+**Run migration:**
+```bash
+npm run db:migrate
+```
+
+---
+
+# Testing Strategy
+
+## Unit Tests (`usage.service.spec.js`)
+```js
+import { incrementUserTokenUsage, getUserUsageSummary } from './usage.service.js';
+
+describe('Usage Service', () => {
+  let testUserId;
+
+  beforeAll(async () => {
+    // Create test user
+    const user = await createTestUser({ tokenUsage: 1000 });
+    testUserId = user.id;
+  });
+
+  it('should increment user token usage', async () => {
+    const result = await incrementUserTokenUsage(testUserId, 500);
+    expect(result.tokenUsage).toBe(1500);
+  });
+
+  it('should get user usage summary', async () => {
+    const summary = await getUserUsageSummary(testUserId);
+    expect(summary.totalTokens).toBe(1500);
+    expect(summary.limit).toBe(10000);
+    expect(summary.remaining).toBe(8500);
+  });
+
+  it('should detect quota exceeded', async () => {
+    // Set user usage to exceed limit
+    await incrementUserTokenUsage(testUserId, 20000);
+    const exceeded = await hasExceededQuota(testUserId);
+    expect(exceeded).toBe(true);
+  });
+});
+```
+
+## Integration Tests (`usage.spec.js`)
+```js
+describe('GET /api/users/me/usage', () => {
+  it('should return usage summary for authenticated user', async () => {
+    const response = await request(app)
+      .get('/api/users/me/usage')
+      .set('Authorization', `Bearer ${testToken}`)
+      .expect(200);
+
+    expect(get(response, 'body.data.summary')).toBeDefined();
+    expect(get(response, 'body.data.summary.totalTokens')).toBeGreaterThanOrEqual(0);
+  });
+});
+```
+
+---
+
+# Monitoring & Logging
+
+**Log all usage events:**
+```js
+// After incrementing usage
+console.log('[Token Usage]', {
+  userId,
+  tokensAdded: tokens,
+  newTotal: user.tokenUsage,
+  operation: get(metadata, 'operation'),
+  timestamp: new Date().toISOString()
+});
+
+// When approaching quota limit
+if (user.tokenUsage >= TOKEN_USAGE.WARNING_THRESHOLD) {
+  console.warn('[Quota Warning]', {
+    userId,
+    currentUsage: user.tokenUsage,
+    limit: TOKEN_USAGE.FREE_TIER_LIMIT,
+    percentageUsed: (user.tokenUsage / TOKEN_USAGE.FREE_TIER_LIMIT) * 100
+  });
+}
+
+// When quota exceeded
+if (user.tokenUsage >= TOKEN_USAGE.FREE_TIER_LIMIT) {
+  console.error('[Quota Exceeded]', {
+    userId,
+    currentUsage: user.tokenUsage,
+    limit: TOKEN_USAGE.FREE_TIER_LIMIT
+  });
+}
+```
+
+---
+
+# Cost Estimation (Rough Calculation)
+
+**Gemini 2.5 Flash Pricing (as of June 2024):**
+- Text-to-image: ~$0.01–$0.03 per image
+- Text processing: ~$0.01 per 1000 tokens
+
+**Example Calculation:**
+- User generates 100 images/month
+- Average prompt: 20 tokens/image
+- Total tokens: 2000
+- Text cost: $0.02
+- Image cost: $1.00 (100 × $0.01)
+- **Total: ~$1.02/month**
+
+**Store in usage summary:**
+```js
+const estimatedCostUsd = (totalTokens / 1000) * 0.01;
+```
+
+---
+
+# Done Criteria (MVP)
+
+- ✅ `tokenUsage` field in users table
+- ✅ Usage tracking service implemented
+- ✅ Token usage incremented on each API call
+- ✅ Usage metadata stored in job parameters
+- ✅ GET /users/me endpoint enhanced with usage stats
+- ✅ GET /users/me/usage endpoint created
+- ✅ Optional: Quota check middleware implemented
+- ✅ Optional: usage_logs table created for detailed tracking
+- ✅ Unit and integration tests pass
+- ✅ Logging for all usage events
+
+---
+
+# Future Enhancements (Post-MVP)
+
+- Usage-based pricing tiers
+- Payment integration (Stripe)
+- Monthly usage reset
+- Usage analytics dashboard
+- Historical usage charts
+- Cost optimization recommendations
+- Bulk purchase of credits
+- Team/organization usage pooling
+- Usage alerts via email
+- Export usage reports (CSV, PDF)
+
