@@ -649,150 +649,471 @@
       "description": "Tasks for be-threads_messages context"
     }
   },
-  "be-image_generator_nano_banana": {
+  "image_generation_integration": {
     "tasks": [
       {
         "id": 1,
-        "title": "Set Up Provider Configuration and ENV Variables",
-        "description": "Configure environment variables and seed the providers table for the Nano Banana provider.",
-        "details": "Add the following ENV variables: PROVIDER_NANOBANANA_API_KEY, PROVIDER_NANOBANANA_BASE_URL, PROVIDER_NANOBANANA_MODEL, PROVIDER_TIMEOUT_MS. Seed the 'providers' table with a config JSON referencing these variables. Ensure the config is loaded at runtime and accessible to the provider adapter.",
-        "testStrategy": "Check that the provider config loads correctly and that the seeded provider row is accessible in the database. Validate ENV variable presence at server startup.",
-        "priority": "high",
+        "title": "Configure Google Gemini 2.5 Flash API Authentication",
+        "description": "Set up and verify authentication for Google Gemini 2.5 Flash Image API via Vertex AI. Core authentication infrastructure (config module, security, tests, and docs) is implemented; remaining steps are enabling the API, providing credentials, configuring environment variables, and running integration tests to validate end-to-end authentication.",
+        "status": "done",
         "dependencies": [],
-        "status": "pending",
-        "subtasks": []
+        "priority": "high",
+        "details": "Implemented:\n- Dependencies installed and added to package.json: google-auth-library, @google-cloud/aiplatform\n- Configuration module created at server/src/config/gemini.js with:\n  - getGeminiConfig(): validates and returns configuration from environment variables\n  - getGeminiAuthClient(): singleton GoogleAuth client\n  - getGeminiConfiguration(): public accessor for configuration\n  - getModelResourceName(): builds full Vertex AI model resource name\n  - testGeminiAuth(): verifies authentication/credentials\n  - resetGeminiAuthClient(): testing utility\n- Uses lodash for safe property access, ES module pattern, robust error handling for missing env vars\n- Comprehensive tests at server/tests/config/gemini.spec.js (7 passed, 2 skipped)\n- Security: server/.gitignore updated to exclude service account keys (google-service-account.json, *-service-account.json)\n- Documentation: server/GOOGLE_CLOUD_SETUP.md with setup steps, env reference, locations/models, troubleshooting, and security best practices\n\nRequired environment variables:\n- GOOGLE_APPLICATION_CREDENTIALS=./google-service-account.json\n- GOOGLE_CLOUD_PROJECT=your-project-id\n- VERTEX_AI_LOCATION=us-central1\n- IMAGE_GEN_MODEL=imagen-3.0-generate-001\n- IMAGE_GEN_MAX_RPM=60\n\nNext steps to complete the task:\n1) Enable Vertex AI API in Google Cloud Console\n2) Create a service account with the \"Vertex AI User\" role and download its JSON key\n3) Place the key file securely (e.g., ./google-service-account.json) and ensure it is not committed\n4) Add the required environment variables to .env\n5) Run and unskip integration tests to validate authentication using testGeminiAuth()\n\nNotes:\n- Code follows existing workspace patterns (e.g., r2.js, db/index.js)\n- All functions documented with JSDoc; error messages are clear and actionable",
+        "testStrategy": "- Unit tests: Use server/tests/config/gemini.spec.js to validate configuration parsing, required env variables, defaults, and model resource name generation (these currently pass: 7 passed).\n- Integration tests: After setting valid credentials and env vars, unskip or run the integration tests in gemini.spec.js. Additionally, call testGeminiAuth() to verify real authentication to Vertex AI succeeds. Expect success with valid credentials and clear failures with invalid/missing credentials.\n- Negative scenarios: Provide invalid GOOGLE_APPLICATION_CREDENTIALS path, incorrect project ID, or insufficient IAM role and confirm authentication fails with actionable error messages.",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Install required dependencies",
+            "description": "Install and add google-auth-library and @google-cloud/aiplatform to package.json.",
+            "dependencies": [],
+            "details": "npm install google-auth-library @google-cloud/aiplatform",
+            "status": "done",
+            "testStrategy": "Verify packages are listed under dependencies and can be imported."
+          },
+          {
+            "id": 2,
+            "title": "Create Gemini configuration module",
+            "description": "Add server/src/config/gemini.js implementing config, auth client singleton, resource name builder, test utilities.",
+            "dependencies": [],
+            "details": "Functions: getGeminiConfig, getGeminiAuthClient, getGeminiConfiguration, getModelResourceName, testGeminiAuth, resetGeminiAuthClient. Uses lodash and ES modules.",
+            "status": "done",
+            "testStrategy": "Unit test configuration validation and resource name generation."
+          },
+          {
+            "id": 3,
+            "title": "Harden credential security via .gitignore",
+            "description": "Update server/.gitignore to exclude service account keys.",
+            "dependencies": [],
+            "details": "Add google-service-account.json and *-service-account.json patterns.",
+            "status": "done",
+            "testStrategy": "Attempt to git add a key file and confirm it is ignored."
+          },
+          {
+            "id": 4,
+            "title": "Add Google Cloud setup documentation",
+            "description": "Create server/GOOGLE_CLOUD_SETUP.md with setup steps, env reference, and security best practices.",
+            "dependencies": [],
+            "details": "Include troubleshooting and links to official docs.",
+            "status": "done",
+            "testStrategy": "Peer review the doc; ensure steps are complete and accurate."
+          },
+          {
+            "id": 5,
+            "title": "Add configuration and auth tests",
+            "description": "Create tests at server/tests/config/gemini.spec.js for env validation, defaults, and resource name generation; include integration tests (skipped).",
+            "dependencies": [],
+            "details": "Current results: 7 passed, 2 skipped, 0 failed.",
+            "status": "done",
+            "testStrategy": "Run npm test to confirm results match."
+          },
+          {
+            "id": 6,
+            "title": "Enable Vertex AI API in Google Cloud Console",
+            "description": "Ensure the Vertex AI API is enabled for the target project.",
+            "dependencies": [],
+            "details": "Navigate to APIs & Services > Library and enable Vertex AI API.",
+            "status": "done",
+            "testStrategy": "Confirm via Console or gcloud services list --enabled that aiplatform.googleapis.com is enabled."
+          },
+          {
+            "id": 7,
+            "title": "Create service account and download JSON key",
+            "description": "Create a service account with the Vertex AI User role, download the key, and store it securely.",
+            "dependencies": [],
+            "details": "Role: roles/aiplatform.user. Save key as ./google-service-account.json (or secure path) and do not commit to git.",
+            "status": "done",
+            "testStrategy": "Use the key to authenticate; invalid or missing roles should fail auth tests."
+          },
+          {
+            "id": 8,
+            "title": "Configure environment variables in .env",
+            "description": "Add required env vars for Vertex AI and model configuration.",
+            "dependencies": [],
+            "details": "GOOGLE_APPLICATION_CREDENTIALS, GOOGLE_CLOUD_PROJECT, VERTEX_AI_LOCATION, IMAGE_GEN_MODEL, IMAGE_GEN_MAX_RPM.",
+            "status": "done",
+            "testStrategy": "Load app/test process and verify getGeminiConfig() returns expected values."
+          },
+          {
+            "id": 9,
+            "title": "Run integration tests to verify authentication",
+            "description": "Unskip and execute integration tests; run testGeminiAuth() to validate real authentication.",
+            "dependencies": [],
+            "details": "After configuring credentials, run npm test. Expect integration tests to pass and testGeminiAuth() to succeed.",
+            "status": "done",
+            "testStrategy": "Integration tests pass with valid credentials; fail with clear errors when creds or permissions are incorrect."
+          }
+        ]
       },
       {
         "id": 2,
-        "title": "Implement Provider Adapter (nanoBanana.adapter.js)",
-        "description": "Create an adapter module to abstract the Nano Banana provider API.",
-        "details": "Implement 'submitGeneration' and 'pollGeneration' functions in src/services/providers/nanoBanana.adapter.js. Use an HTTP client with a 45s timeout and 1 retry on 5xx errors. Map provider statuses to internal run_status. Handle both synchronous and asynchronous responses. For img2img/inpaint, load image buffers from uploads as needed.",
-        "testStrategy": "Unit test the adapter with mocked HTTP responses for all job types and error scenarios. Validate status mapping and retry logic.",
-        "priority": "high",
+        "title": "Seed Default Gemini Provider in Database",
+        "description": "Seed an idempotent default Gemini 2.5 Flash provider on first boot using Drizzle ORM. The provider is created if missing and skipped if it already exists. Configuration is stored in JSONB and includes model, endpoint, projectId from environment variables, description, capabilities, retries, and timeout.",
+        "status": "done",
         "dependencies": [
           1
         ],
-        "status": "pending",
+        "priority": "high",
+        "details": "Implemented seeding with Drizzle ORM:\n- Provider Seed Module: server/src/seed/providers.seed.js\n  - seedGeminiProvider(): creates provider if not present, otherwise skips (idempotent)\n  - getGeminiProvider(): retrieves the Gemini provider from the database\n  - Comprehensive error handling; follows lodash usage patterns; ES6 modules\n- Main Seeder: server/src/seed/index.js orchestrates seeding with proper connection cleanup and clear logging\n- Provider record details:\n  - name: \"gemini-2.5-flash\"\n  - config (JSONB):\n    - model: \"imagen-3.0-generate-001\"\n    - endpoint: \"us-central1\"\n    - projectId: loaded from environment\n    - description: \"Google Gemini 2.5 Flash - Fast and efficient image generation powered by Vertex AI\"\n    - capabilities: [\"text2img\"]\n    - maxRetries: 3\n    - timeoutMs: 30000\n- Database integration:\n  - Uses existing Drizzle setup\n  - Enforces unique constraint on provider name\n  - Properly handles JSONB config field\n  - Includes createdAt/updatedAt timestamps\n- Usage:\n  - Run: npm run seeder\n  - Output logs show status (created/skipped) and key provider details",
+        "testStrategy": "Automated tests: server/tests/seed/providers.seed.spec.js (10 tests passing) verify provider creation, duplicate handling (idempotency), configuration structure, environment variable usage, database retrieval/persistence, unique constraint enforcement, and JSONB config storage.\nManual verification:\n- Run npm run seeder and confirm console output shows \"created\" on first run and \"skipped\" on subsequent runs\n- Query the providers table for name = \"gemini-2.5-flash\" and validate all config fields (model, endpoint, projectId from env, description, capabilities, retries, timeout)\n- Confirm timestamps are set and that unique constraint prevents duplicates",
         "subtasks": []
       },
       {
         "id": 3,
-        "title": "Implement POST /threads/:threadId/generations Endpoint",
-        "description": "Create the endpoint to submit image generation jobs from user prompts.",
-        "details": "Add a POST endpoint at /api/threads/:threadId/generations. Authenticate via verifyToken. Validate request body (prompt, jobType, width, height, etc.). Enforce ownership of thread and uploads. For img2img/inpaint, require initUploadId/maskUploadId. Create an assistant message (status=processing) and a job row (status=queued).",
-        "testStrategy": "Integration test: submit valid and invalid requests, check DB for correct job/message creation, and validate error responses (400, 401, 403).",
+        "title": "Implement Gemini Service Layer (`gemini.service.js`)",
+        "description": "Create a service module to handle all Gemini API interactions, including image generation and error handling.",
+        "details": "Develop `gemini.service.js` with functions: `initGeminiClient`, `generateImage`, `getAuthenticatedClient`, `buildGenerateRequest`, and `parseImageResponse`. Implement robust error mapping (handle 429, 400, and generic errors). Ensure all API calls use environment variables for configuration. Log all errors with context.",
+        "testStrategy": "Unit test each function with mocked Gemini API responses. Test error handling by simulating API failures and verifying error mapping.",
         "priority": "high",
         "dependencies": [
           1
         ],
-        "status": "pending",
-        "subtasks": []
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Implement Gemini Client Initialization Function (`initGeminiClient`)",
+            "description": "Develop a function to initialize and configure the Gemini API client using environment variables.",
+            "dependencies": [],
+            "details": "Create `initGeminiClient` in `gemini.service.js`. Use environment variables for API keys and endpoints. Ensure the client is reusable and supports configuration for different environments. Validate required env vars and throw descriptive errors if missing.\n<info added on 2025-10-14T17:19:10.374Z>\n- Validates presence of GOOGLE_APPLICATION_CREDENTIALS and GOOGLE_CLOUD_PROJECT and throws descriptive errors if missing\n- Instantiates PredictionServiceClient from @google-cloud/aiplatform with the configured endpoint and credentials\n- Verifies credentials by calling getAuthenticatedClient from config/gemini.js before client usage\n- Applies the verified credentials and endpoint configuration to the client\n- Wraps initialization in try/catch with detailed error messages for env misconfigurations, auth failures, and endpoint issues; logs errors with context\n- Logs successful initialization including project, location, and model details\n- Returns the initialized client for use by downstream functions\n</info added on 2025-10-14T17:19:10.374Z>",
+            "status": "done",
+            "testStrategy": "Unit test with various environment variable scenarios, including missing or invalid values. Mock Gemini client to verify correct initialization."
+          },
+          {
+            "id": 2,
+            "title": "Implement Authentication Function (`getAuthenticatedClient`)",
+            "description": "Create a function to authenticate and return a Gemini API client instance with proper credentials.",
+            "dependencies": [
+              1
+            ],
+            "details": "Develop `getAuthenticatedClient` that wraps the initialized client with authentication logic. Ensure tokens or credentials are securely handled and refreshed if needed. Integrate with `initGeminiClient` and support error handling for authentication failures.\n<info added on 2025-10-14T17:19:41.001Z>\n- Implemented module-scoped singleton caching for the Gemini prediction client.\n- getAuthenticatedClient lazily initializes by calling initGeminiClient on first invocation; subsequent calls return the cached instance for performance.\n- Exported resetGeminiClient to clear the cached client for testing.\n- Authentication/initialization failures are not cached and the original error is propagated to the caller.\n</info added on 2025-10-14T17:19:41.001Z>",
+            "status": "done",
+            "testStrategy": "Unit test with mocked authentication responses, including success and failure cases. Verify error handling and credential usage."
+          },
+          {
+            "id": 3,
+            "title": "Implement Request Builder Function (`buildGenerateRequest`)",
+            "description": "Build a function to construct valid image generation requests for the Gemini API.",
+            "dependencies": [
+              2
+            ],
+            "details": "Create `buildGenerateRequest` to accept parameters (e.g., prompt, image settings) and return a request object matching Gemini API specs. Validate inputs and handle optional parameters. Ensure compatibility with downstream API calls.\n<info added on 2025-10-14T17:20:26.626Z>\n- Implemented strict input validation: non-empty prompt; numberOfImages must be an integer between 1–8; aspectRatio restricted to one of 1:1, 9:16, 16:9, 4:3, 3:4; seed coerced to integer when provided; optional language supported; addWatermark supported.\n- Defaults applied: numberOfImages=1, aspectRatio=1:1, language=auto, addWatermark=true.\n- Returns a request object formatted to the Vertex AI Imagen API specification to ensure downstream compatibility.\n- Added comprehensive unit tests (9 cases): minimal valid request; full options; empty prompt rejection; numberOfImages <1; numberOfImages >8; invalid aspectRatio; seed coercion to integer; language passthrough/auto default; watermark toggle behavior.\n</info added on 2025-10-14T17:20:26.626Z>",
+            "status": "done",
+            "testStrategy": "Unit test with various input combinations, including edge cases. Verify output matches Gemini API request format."
+          },
+          {
+            "id": 4,
+            "title": "Implement Image Generation Function (`generateImage`)",
+            "description": "Develop the main function to call Gemini API for image generation, handle responses, and log errors.",
+            "dependencies": [
+              3
+            ],
+            "details": "Implement `generateImage` to use the authenticated client and built request. Handle API responses, map errors (429, 400, generic), and log all errors with context. Ensure all API calls use environment variables for configuration. Return parsed image data or mapped errors.\n<info added on 2025-10-14T17:20:41.484Z>\n- Main entry point for the image generation workflow using a singleton-authenticated client\n- buildGenerateRequest includes input validation and normalization before constructing the payload\n- Retrieves model resource name from environment/config and injects it into the Vertex AI predict request\n- Calls Vertex AI predict API with the correct request shape (model, prompt/input, and generation parameters)\n- Parses the response via parseImageResponse and returns structured image data including a total count\n- Uses mapGeminiError to standardize errors; logs code, message, and original error details\n- Comprehensive logging at start, model selection, request construction, API call success, response parsing, and on errors\n</info added on 2025-10-14T17:20:41.484Z>",
+            "status": "done",
+            "testStrategy": "Unit test with mocked Gemini API responses, including success and error scenarios. Verify error mapping, logging, and correct data extraction."
+          },
+          {
+            "id": 5,
+            "title": "Implement Response Parsing and Error Handling (`parseImageResponse` & Error Mapping)",
+            "description": "Create functions to parse Gemini API image responses and robustly map errors to internal error codes.",
+            "dependencies": [
+              4
+            ],
+            "details": "Develop `parseImageResponse` to extract image data and metadata from API responses. Implement error mapping for 429, 400, and generic errors. Ensure all errors are logged with context and returned in a standardized format.\n<info added on 2025-10-14T17:20:57.593Z>\nImplemented parseImageResponse with validation for empty/invalid responses, extraction of the predictions array, and mapping to standardized image objects containing imageData (base64), mimeType (default image/png), and index. Predictions missing base64 data are filtered with warning logs. The function throws descriptive errors for invalid inputs and returns { images, count }.\n\nImplemented mapGeminiError to map rate limit errors (status 429, code 8, or messages containing “quota”/“rate limit”) to RATE_LIMIT_EXCEEDED; bad requests (status 400, code 3, or messages containing “invalid”/“bad request”) to INVALID_REQUEST; authentication errors (status 401/403, code 7/16) to AUTHENTICATION_FAILED; and all others to GENERATION_FAILED with status 500. The original error message is preserved, and the standardized error object includes code, message, status, and originalError.\n\nLogging includes contextual metadata for all errors and warnings. Comprehensive test coverage with 28 passing unit tests spans all validation paths, error cases, edge scenarios, and verifies correct error mapping for each type.\n</info added on 2025-10-14T17:20:57.593Z>",
+            "status": "done",
+            "testStrategy": "Unit test with various API responses, including malformed and error cases. Verify correct parsing, error mapping, and logging behavior."
+          }
+        ]
       },
       {
         "id": 4,
-        "title": "Implement Job Processing Worker",
-        "description": "Create a background worker to process queued jobs and interact with the provider adapter.",
-        "details": "Implement a worker (inline or background task) that picks up jobs with status=queued, updates status to processing, calls submitGeneration, and polls for completion. On success, store image(s) to R2, create images row(s), and update job/message statuses. On failure, set job/message to failed with error details.",
-        "testStrategy": "Simulate job queue with various job types and provider responses. Verify correct DB updates and error handling.",
-        "priority": "high",
+        "title": "Implement Providers Service Layer (`providers.service.js`)",
+        "description": "Create a service module to manage provider records, including fetching and creating the default Gemini provider.",
+        "details": "Develop `providers.service.js` with functions: `getDefaultProvider` and `getProviderByName`. Ensure `getDefaultProvider` creates the Gemini provider if it does not exist. Use Drizzle ORM for all DB operations.",
+        "testStrategy": "Unit test provider retrieval and creation logic. Verify idempotency by running multiple times and ensuring only one provider record exists.",
+        "priority": "medium",
         "dependencies": [
-          2,
-          3
+          2
         ],
         "status": "pending",
         "subtasks": []
       },
       {
         "id": 5,
-        "title": "Integrate R2 Storage for Image Persistence",
-        "description": "Store generated images in R2 and persist metadata in the images table.",
-        "details": "On successful generation, upload image bytes to R2 using the key format 'g/{user_id}/{yyyy}/{mm}/{dd}/{ulid()}.png'. Store public URLs using R2_PUBLIC_BASE_URL. Create an images row linked to the job, including metadata (width, height, seed, model, provider latency).",
-        "testStrategy": "Verify that images are uploaded to R2, URLs are correct, and images rows are created with accurate metadata.",
-        "priority": "medium",
+        "title": "Implement Jobs Service Layer (`jobs.service.js`)",
+        "description": "Create a service module to manage job lifecycle, including creation, status updates, processing, and retrieval.",
+        "details": "Develop `jobs.service.js` with functions: `createJob`, `updateJobStatus`, `processJob`, `getJobById`, and `getJobsByThread`. The `processJob` function should orchestrate job status updates, call `gemini.service.generateImage`, store images, and update related messages. Handle all error scenarios as per PRD.",
+        "testStrategy": "Unit test each function, including end-to-end job processing with mocked Gemini API. Test error handling by simulating failures and verifying DB updates.",
+        "priority": "high",
         "dependencies": [
+          3,
           4
         ],
         "status": "pending",
-        "subtasks": []
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Implement Job Creation Function (`createJob`)",
+            "description": "Develop the `createJob` function to initialize and persist new job records in the database.",
+            "dependencies": [],
+            "details": "Define the `createJob` function in `jobs.service.js`. Accept job parameters, validate input, and insert a new job record with initial status (e.g., 'queued'). Return the created job object.",
+            "status": "pending",
+            "testStrategy": "Unit test with valid and invalid input. Verify DB record creation and correct initial status."
+          },
+          {
+            "id": 2,
+            "title": "Implement Job Status Update Function (`updateJobStatus`)",
+            "description": "Create the `updateJobStatus` function to update the status of a job in the database.",
+            "dependencies": [
+              1
+            ],
+            "details": "Add `updateJobStatus` to `jobs.service.js`. Accept job ID and new status. Update the job record in the DB, ensuring only valid transitions. Return updated job.",
+            "status": "pending",
+            "testStrategy": "Unit test status transitions, including invalid transitions. Verify DB updates."
+          },
+          {
+            "id": 3,
+            "title": "Implement Job Processing Orchestration (`processJob`)",
+            "description": "Develop the `processJob` function to handle the full job lifecycle, including status updates and integration with Gemini service.",
+            "dependencies": [
+              1,
+              2
+            ],
+            "details": "In `processJob`, update job status to 'processing', call `gemini.service.generateImage`, handle async flow, and update status to 'succeeded' or 'failed' based on outcome.",
+            "status": "pending",
+            "testStrategy": "Unit and integration tests with mocked Gemini API. Simulate success and failure scenarios."
+          },
+          {
+            "id": 4,
+            "title": "Implement Image Storage for Processed Jobs",
+            "description": "Store generated images from Gemini API in the appropriate storage and link them to the job record.",
+            "dependencies": [
+              3
+            ],
+            "details": "After image generation in `processJob`, save images to storage (e.g., cloud or local), update job record with image URLs/metadata. Ensure atomicity and cleanup on failure.",
+            "status": "pending",
+            "testStrategy": "Unit test image storage logic. Integration test with storage backend. Simulate storage failures."
+          },
+          {
+            "id": 5,
+            "title": "Update Related Messages After Job Processing",
+            "description": "Update assistant/user messages in the database to reflect job completion and attach image results.",
+            "dependencies": [
+              4
+            ],
+            "details": "After successful image storage, update relevant message records to include job results and status. Ensure message consistency and proper error handling.",
+            "status": "pending",
+            "testStrategy": "Unit test message update logic. Verify messages reflect job outcome and contain correct image links."
+          },
+          {
+            "id": 6,
+            "title": "Implement Robust Error Handling for All Job Operations",
+            "description": "Ensure all job service functions handle errors as per PRD, including retries, logging, and status updates.",
+            "dependencies": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "details": "Add try/catch blocks, map errors to job statuses (e.g., 'failed'), log errors with context, and ensure no partial updates. Follow PRD error handling requirements.",
+            "status": "pending",
+            "testStrategy": "Unit and integration tests simulating all error scenarios. Verify correct status updates and logs."
+          }
+        ]
       },
       {
         "id": 6,
-        "title": "Implement GET /jobs/:jobId Endpoint",
-        "description": "Expose an endpoint to poll job status and retrieve job details.",
-        "details": "Add a GET endpoint at /api/jobs/:jobId. Authenticate and enforce ownership via linked message/thread. Return job status, externalId, and parameters. Map internal statuses to API response. Handle not found and forbidden cases.",
-        "testStrategy": "Test with jobs in all statuses, verify correct data and error responses (200, 403, 404).",
-        "priority": "medium",
+        "title": "Enhance POST /api/threads/:threadId/messages Endpoint",
+        "description": "Modify the existing endpoint to create jobs and assistant messages when a user sends a text prompt.",
+        "details": "Update the controller to: (1) create a user message, (2) fetch the default provider, (3) create a job with status 'queued', (4) create an assistant message with status 'processing', (5) trigger async job processing (do not await), and (6) return the enhanced 201 response as specified.",
+        "testStrategy": "Integration test the endpoint to ensure it creates messages, jobs, and assistant messages correctly. Verify the response structure matches the PRD.",
+        "priority": "high",
         "dependencies": [
-          3,
-          4
-        ],
-        "status": "pending",
-        "subtasks": []
-      },
-      {
-        "id": 7,
-        "title": "Update Messages API to Reflect Generation Status",
-        "description": "Ensure /threads/:threadId/messages includes assistant messages with up-to-date generation statuses.",
-        "details": "Modify the messages API to include assistant messages created by job submissions, reflecting their current status (processing, succeeded, failed) and image URLs/metadata when available.",
-        "testStrategy": "Fetch messages for a thread with jobs in various statuses, verify assistant messages reflect correct status and data.",
-        "priority": "medium",
-        "dependencies": [
-          3,
-          4,
           5
         ],
         "status": "pending",
-        "subtasks": []
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Create User Message in Controller",
+            "description": "Implement logic to create a user message when a text prompt is received in the endpoint.",
+            "dependencies": [],
+            "details": "Update the POST /api/threads/:threadId/messages controller to insert a new user message in the database with the provided prompt and associate it with the correct thread and user.",
+            "status": "pending",
+            "testStrategy": "Unit test message creation with various prompt inputs. Verify message is stored and linked to thread/user."
+          },
+          {
+            "id": 2,
+            "title": "Fetch Default Provider for Thread",
+            "description": "Retrieve the default provider for the thread after user message creation.",
+            "dependencies": [
+              1
+            ],
+            "details": "After creating the user message, fetch the default provider (e.g., Gemini) for the thread using the appropriate service or configuration. Handle cases where no provider is found.",
+            "status": "pending",
+            "testStrategy": "Mock provider service and test retrieval logic. Ensure correct provider is fetched or error is handled."
+          },
+          {
+            "id": 3,
+            "title": "Create Job with Status 'Queued'",
+            "description": "Create a new job entry with status 'queued' and link it to the user message and provider.",
+            "dependencies": [
+              2
+            ],
+            "details": "Use the jobs service to create a job with status 'queued', associating it with the user message, thread, and provider. Store all necessary metadata for later processing.",
+            "status": "pending",
+            "testStrategy": "Unit test job creation with valid and invalid data. Verify job is linked to message and provider."
+          },
+          {
+            "id": 4,
+            "title": "Create Assistant Message with Status 'Processing'",
+            "description": "Insert an assistant message with status 'processing' linked to the job and thread.",
+            "dependencies": [
+              3
+            ],
+            "details": "After job creation, insert an assistant message in the database with status 'processing', referencing the job and thread. Ensure correct linkage for later updates.",
+            "status": "pending",
+            "testStrategy": "Test assistant message creation and linkage to job/thread. Validate status and references."
+          },
+          {
+            "id": 5,
+            "title": "Trigger Async Job Processing and Format 201 Response",
+            "description": "Trigger asynchronous job processing (non-blocking) and return the enhanced 201 response as specified.",
+            "dependencies": [
+              4
+            ],
+            "details": "Call the job processing function asynchronously (do not await). Format and return the 201 response including user message, assistant message, job info, and provider as per PRD.",
+            "status": "pending",
+            "testStrategy": "Integration test endpoint for async behavior and response structure. Validate response fields and non-blocking job processing."
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "Implement Asynchronous Job Processing",
+        "description": "Ensure jobs are processed asynchronously, updating job and message statuses as the job progresses.",
+        "details": "Use a background worker or async function to process jobs. On job creation, trigger `jobs.service.processJob(jobId)` without blocking the API response. Ensure job status transitions (queued → processing → succeeded/failed) and update assistant messages accordingly. Handle errors robustly.",
+        "testStrategy": "Integration and E2E tests to verify jobs are processed asynchronously and statuses are updated even if the user leaves the thread. Simulate API failures and verify error handling.",
+        "priority": "high",
+        "dependencies": [
+          6
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Set Up Background Worker for Asynchronous Job Processing",
+            "description": "Establish a background worker or async function to process jobs without blocking API responses.",
+            "dependencies": [],
+            "details": "Choose a background worker solution (e.g., Bull, node worker threads, or async functions). Configure the worker to listen for new jobs and process them independently of the API request lifecycle.",
+            "status": "pending",
+            "testStrategy": "Unit test worker initialization and job queueing. Verify jobs are picked up and processed asynchronously."
+          },
+          {
+            "id": 2,
+            "title": "Implement Job Status Transitions (Queued → Processing → Succeeded/Failed)",
+            "description": "Ensure job status is updated at each stage of processing, reflecting accurate state transitions.",
+            "dependencies": [
+              1
+            ],
+            "details": "Update the job record in the database as it moves through each state: queued, processing, succeeded, or failed. Ensure atomic updates and handle race conditions.",
+            "status": "pending",
+            "testStrategy": "Unit test status transitions. Simulate concurrent updates and verify correct state progression."
+          },
+          {
+            "id": 3,
+            "title": "Update Assistant Messages Based on Job Status",
+            "description": "Synchronize assistant messages with job status changes to provide real-time feedback to users.",
+            "dependencies": [
+              2
+            ],
+            "details": "Implement logic to update related assistant messages in the database or message queue whenever a job status changes. Ensure messages reflect the latest job state.",
+            "status": "pending",
+            "testStrategy": "Unit test message updates on status change. Verify UI or API reflects correct message content."
+          },
+          {
+            "id": 4,
+            "title": "Implement Robust Error Handling and Recovery for Job Processing",
+            "description": "Handle errors during job processing, ensuring jobs fail gracefully and statuses/messages are updated.",
+            "dependencies": [
+              2
+            ],
+            "details": "Catch and log all errors during job processing. Update job status to 'failed' and provide error details in both job and message records. Implement retry logic if appropriate.",
+            "status": "pending",
+            "testStrategy": "Simulate processing failures and verify error status, logs, and message updates. Test retry scenarios if implemented."
+          },
+          {
+            "id": 5,
+            "title": "Integrate Asynchronous Processing with Job Creation Endpoint",
+            "description": "Trigger asynchronous job processing from the API endpoint without blocking the response.",
+            "dependencies": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "details": "Modify the job creation API to enqueue jobs or trigger the background worker, immediately returning a response to the client. Ensure jobId is passed correctly.",
+            "status": "pending",
+            "testStrategy": "Integration test job creation endpoint. Verify API responds immediately and job is processed in the background."
+          },
+          {
+            "id": 6,
+            "title": "Perform Integration and End-to-End Testing of Asynchronous Job Processing",
+            "description": "Test the full workflow from job creation to completion, including status and message updates, and error handling.",
+            "dependencies": [
+              5
+            ],
+            "details": "Write integration and E2E tests to verify jobs are processed asynchronously, statuses/messages are updated, and errors are handled. Simulate user leaving the thread and API failures.",
+            "status": "pending",
+            "testStrategy": "E2E tests covering job creation, processing, status/message updates, and error scenarios. Verify system reliability and user experience."
+          }
+        ]
       },
       {
         "id": 8,
-        "title": "Implement Input Validation and Ownership Enforcement",
-        "description": "Strictly validate all incoming data and enforce resource ownership.",
-        "details": "Ensure prompt length, width/height values, and jobType are validated. For img2img/inpaint, require initUploadId/maskUploadId and check ownership of thread and uploads. Use existing verifyToken and threads.owner_id checks.",
-        "testStrategy": "Submit requests with invalid/missing fields, wrong ownership, and verify 400/403 errors are returned.",
+        "title": "Enhance GET /api/threads/:threadId/messages Endpoint",
+        "description": "Modify the endpoint to join with jobs and images tables, returning job status and generated images in the response.",
+        "details": "Update the messages retrieval logic to include related job and image data for each message. Structure the response as specified in the PRD, ensuring all fields (job status, images, metadata) are present.",
+        "testStrategy": "Integration test the endpoint to ensure the response includes jobs and images. Validate with threads containing multiple messages and jobs.",
         "priority": "medium",
         "dependencies": [
-          3
+          7
         ],
         "status": "pending",
         "subtasks": []
       },
       {
         "id": 9,
-        "title": "Standardize Error Handling and API Responses",
-        "description": "Ensure all endpoints return errors in the specified JSON shape and handle all error cases.",
-        "details": "Implement error handling middleware or patterns to return { success, status, message } for all error cases: 400, 401, 403, 404, 422, 500. Map provider errors and validation failures appropriately.",
-        "testStrategy": "Force each error condition and verify API responses match the required format and status codes.",
+        "title": "Implement GET /api/jobs/:jobId Endpoint",
+        "description": "Create a new endpoint to fetch the status and result of a specific job, including images and metadata.",
+        "details": "Develop the controller and route for GET /api/jobs/:jobId. Authenticate the user, verify ownership, and return job details with images as per the PRD response format. Use `jobs.service.getJobById` for data retrieval.",
+        "testStrategy": "Unit and integration tests for the endpoint. Test with valid, invalid, and unauthorized job IDs. Verify response structure and error handling.",
         "priority": "medium",
         "dependencies": [
-          3,
-          6
+          5
         ],
         "status": "pending",
         "subtasks": []
       },
       {
         "id": 10,
-        "title": "End-to-End Testing and MVP Checklist Validation",
-        "description": "Test the full flow from job submission to image retrieval, including all edge cases.",
-        "details": "Write integration tests covering: job submission, polling, image persistence, message updates, input validation, forbidden access, provider failures, and error handling. Confirm all MVP checklist items are met.",
-        "testStrategy": "Run automated and manual tests for all checklist scenarios. Validate DB, R2, and API outputs for correctness.",
-        "priority": "high",
+        "title": "Implement Token Usage Tracking and Logging",
+        "description": "Track and store Gemini API token usage for each job, and log all critical events for monitoring and cost control.",
+        "details": "Extract usage metadata from Gemini API responses in `gemini.service.js` and store in job parameters. Update user token usage counters. Implement logging for job creation, processing, success, failure, and rate limit events. Ensure logs include sufficient context for monitoring and debugging.",
+        "testStrategy": "Unit test token extraction and storage logic. Verify logs are written for all critical events. Integration test cost tracking with multiple jobs.",
+        "priority": "medium",
         "dependencies": [
           5,
-          6,
-          7,
-          8,
-          9
+          7
         ],
         "status": "pending",
         "subtasks": []
       }
     ],
     "metadata": {
-      "created": "2025-10-13T14:57:48.757Z",
-      "updated": "2025-10-13T15:12:59.796Z",
-      "description": "Tasks for be-image_generator_nano_banana context"
+      "created": "2025-10-14T16:19:11.264Z",
+      "updated": "2025-10-14T17:18:29.935Z",
+      "description": "Tasks for image_generation_integration context"
     }
   }
 }
