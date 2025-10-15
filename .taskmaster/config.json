@@ -11,7 +11,7 @@
       "provider": "openai",
       "modelId": "gpt-4o-search-preview",
       "maxTokens": 65536,
-      "temperature": 0.1
+      "temperature": 0.3
     },
     "fallback": {
       "provider": "openrouter",

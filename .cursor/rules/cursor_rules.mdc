@@ -3,6 +3,7 @@ description: Guidelines for creating and maintaining Cursor rules to ensure cons
 globs: .cursor/rules/*.mdc
 alwaysApply: true
 ---
+- **Everytime research by using mcp task-master, always save again this file research infomation info .taskmaster/docs/research**
 
 - **Required Rule Structure:**
   ```markdown
