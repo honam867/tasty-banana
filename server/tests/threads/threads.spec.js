@@ -309,26 +309,57 @@ describe("Threads API Routes - Basic Structure Test", () => {
       testThreadId = get(createResponse, "body.data.id");
     });
 
-    it("should successfully create a message with valid data", async () => {
+    it("should successfully create a message with valid data and trigger job processing", async () => {
       const response = await request(app)
         .post(`/api/threads/${testThreadId}/messages`)
         .set("Authorization", `Bearer ${testToken}`)
         .send({
           role: "user",
-          content: "This is a test message"
+          content: "Generate a beautiful sunset image"
         })
         .expect(201);
 
       expectSuccessShape(response, 201);
       
       const data = get(response, "body.data");
-      expect(get(data, "id")).toBeDefined();
-      expect(get(data, "threadId")).toBe(testThreadId);
-      expect(get(data, "role")).toBe("user");
-      expect(get(data, "content")).toBe("This is a test message");
-      expect(get(data, "status")).toBe("pending");
-      expect(get(data, "createdAt")).toBeDefined();
-      expect(get(data, "updatedAt")).toBeDefined();
+      
+      // Verify userMessage
+      const userMessage = get(data, "userMessage");
+      expect(get(userMessage, "id")).toBeDefined();
+      expect(get(userMessage, "threadId")).toBe(testThreadId);
+      expect(get(userMessage, "role")).toBe("user");
+      expect(get(userMessage, "content")).toBe("Generate a beautiful sunset image");
+      expect(get(userMessage, "status")).toBe("pending");
+      expect(get(userMessage, "createdAt")).toBeDefined();
+      expect(get(userMessage, "updatedAt")).toBeDefined();
+      
+      // Verify assistantMessage
+      const assistantMessage = get(data, "assistantMessage");
+      expect(get(assistantMessage, "id")).toBeDefined();
+      expect(get(assistantMessage, "threadId")).toBe(testThreadId);
+      expect(get(assistantMessage, "role")).toBe("assistant");
+      expect(get(assistantMessage, "content")).toBe("Processing your request...");
+      expect(get(assistantMessage, "status")).toBe("processing");
+      expect(get(assistantMessage, "createdAt")).toBeDefined();
+      
+      // Verify job
+      const job = get(data, "job");
+      expect(get(job, "id")).toBeDefined();
+      expect(get(job, "messageId")).toBe(get(userMessage, "id"));
+      expect(get(job, "jobType")).toBe("text2img");
+      expect(get(job, "status")).toBe("queued");
+      expect(get(job, "parameters")).toBeDefined();
+      expect(get(job, "parameters.prompt")).toBe("Generate a beautiful sunset image");
+      expect(get(job, "parameters.numberOfImages")).toBe(1);
+      expect(get(job, "parameters.aspectRatio")).toBe("1:1");
+      expect(get(job, "createdAt")).toBeDefined();
+      
+      // Verify provider
+      const provider = get(data, "provider");
+      expect(get(provider, "id")).toBeDefined();
+      expect(get(provider, "name")).toBe("gemini-2.5-flash");
+      expect(get(provider, "config")).toBeDefined();
+      
       expect(get(response, "body.message")).toBe("Message created successfully");
     });
 
@@ -414,7 +445,8 @@ describe("Threads API Routes - Basic Structure Test", () => {
         .expect(201);
 
       expectSuccessShape(response, 201);
-      expect(get(response, "body.data.content")).toBe(maxContent);
+      const userMessage = get(response, "body.data.userMessage");
+      expect(get(userMessage, "content")).toBe(maxContent);
     });
   });
 
