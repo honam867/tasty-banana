@@ -88,6 +88,8 @@ export const getAuthenticatedClient = async () => {
  * @param {number} [params.seed] - Random seed for reproducibility
  * @param {string} [params.language='auto'] - Language code for prompt
  * @param {boolean} [params.addWatermark=true] - Whether to add watermark
+ * @param {boolean} [params.enablePromptRewriting=true] - Enable LLM-based prompt rewriting
+ * @param {string} [params.personGeneration='allow_all'] - Person generation setting: 'dont_allow', 'allow_adult', or 'allow_all'
  * @returns {Object} Formatted request object for Vertex AI
  * @throws {Error} If required parameters are missing or invalid
  */
@@ -100,12 +102,25 @@ export const buildGenerateRequest = (params) => {
 
   // Ensure prompt starts with imperative verb for Vertex AI Imagen
   // Check common action verbs at the start of prompt
-  const trimmedPrompt = prompt.trim();
-  const startsWithAction = /^(generate|create|draw|show|paint|design|illustrate|make|produce|render)/i.test(trimmedPrompt);
-  
-  if (!startsWithAction) {
-    prompt = `Generate ${trimmedPrompt}`;
-  }
+  // const trimmedPrompt = prompt.trim();
+  // const startsWithAction =
+  //   /^(generate|create|draw|show|paint|design|illustrate|make|produce|render)/i.test(
+  //     trimmedPrompt
+  //   );
+
+  // if (!startsWithAction) {
+  //   prompt = `Generate ${trimmedPrompt}`;
+  // }
+
+  // Add photorealistic style by default if user hasn't specified any style
+  // This prevents the model from defaulting to anime/illustrated styles
+  // const hasExplicitStyle = /\b(photo|photograph|realistic|photorealistic|dslr|camera|anime|cartoon|illustration|illustrated|painting|drawn|artistic|style|art)\b/i.test(prompt);
+
+  // if (!hasExplicitStyle) {
+  //   // Append photorealistic descriptors to get natural/realistic results
+  //   prompt = `${prompt}. Professional DSLR photograph, photorealistic, natural lighting, high quality`;
+  //   console.log("✨ Added photorealistic style to prompt:", prompt);
+  // }
 
   // Validate and set defaults
   const numberOfImages = get(params, "numberOfImages", 1);
@@ -127,11 +142,22 @@ export const buildGenerateRequest = (params) => {
   // Build request - instances only contains prompt
   const instances = [{ prompt }];
 
+  // Validate personGeneration parameter
+  const personGeneration = get(params, "personGeneration", "allow_all");
+  const validPersonGeneration = ["dont_allow", "allow_adult", "allow_all"];
+  if (!validPersonGeneration.includes(personGeneration)) {
+    throw new Error(
+      `personGeneration must be one of: ${validPersonGeneration.join(", ")}`
+    );
+  }
+
   // Build parameters - seed goes here, not in instances
   const requestParams = {
     sampleCount: numberOfImages,
     aspectRatio,
     addWatermark,
+    enablePromptRewriting: get(params, "enablePromptRewriting", true),
+    personGeneration, // Allow generation of people of all ages (adults and children)
   };
 
   // Add optional seed if provided
@@ -169,7 +195,6 @@ export const parseImageResponse = (response) => {
   // NOTE: Vertex AI returns protobuf Struct format: structValue.fields.{fieldName}.{valueType}Value
   const images = predictions
     .map((prediction, index) => {
-      // Handle protobuf Struct response format
       const bytesBase64Encoded =
         get(prediction, "structValue.fields.bytesBase64Encoded.stringValue") ||
         get(prediction, "bytesBase64Encoded"); // Fallback to direct access
@@ -279,13 +304,15 @@ export const mapGeminiError = (error) => {
  * @param {number} [params.seed] - Random seed
  * @param {string} [params.language='auto'] - Language code
  * @param {boolean} [params.addWatermark=true] - Add watermark
+ * @param {boolean} [params.enablePromptRewriting=true] - Enable LLM-based prompt rewriting
+ * @param {string} [params.personGeneration='allow_all'] - Person generation: 'dont_allow', 'allow_adult', 'allow_all'
  * @returns {Promise<Object>} Generated images data
  * @throws {Error} Mapped error if generation fails
  */
 export const generateImage = async (params) => {
   try {
     console.log("🎨 Starting image generation...");
-    console.log(`   Prompt: ${get(params, "prompt", "").substring(0, 100)}...`);
+    // console.log(`   Prompt: ${get(params, "prompt", "").substring(0, 100)}...`);
 
     // Get authenticated client
     const client = await getAuthenticatedClient();
@@ -312,14 +339,9 @@ export const generateImage = async (params) => {
 
     // Parse response
     const result = parseImageResponse(response);
-
-    console.log(`✅ Image generation successful`);
-    console.log(`   Images generated: ${result.count}`);
-
     return result;
   } catch (error) {
     const mappedError = mapGeminiError(error);
-
     console.error("❌ Image generation failed:");
     console.error(`   Code: ${mappedError.code}`);
     console.error(`   Message: ${mappedError.message}`);
@@ -332,7 +354,6 @@ export const generateImage = async (params) => {
 export default {
   initGeminiClient,
   getAuthenticatedClient,
-  buildGenerateRequest,
   parseImageResponse,
   mapGeminiError,
   generateImage,

@@ -8,9 +8,9 @@
       "baseURL": "https://gpt1.shupremium.com/v1"
     },
     "research": {
-      "provider": "openai",
-      "modelId": "gpt-4o-search-preview",
-      "maxTokens": 65536,
+      "provider": "perplexity",
+      "modelId": "sonar-reasoning-pro",
+      "maxTokens": 8700,
       "temperature": 0.3
     },
     "fallback": {

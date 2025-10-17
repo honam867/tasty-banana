@@ -1,7 +1,7 @@
 import lodash from "lodash";
 const { get, isNil } = lodash;
 
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, lt } from "drizzle-orm";
 import { db } from "../db/drizzle.js";
 import { threads } from "../db/schema.js";
 
@@ -59,8 +59,6 @@ export const findThreadsByOwnerId = async (ownerId) => {
  * @returns {Promise<Object>} Object with items and nextCursor
  */
 export const findThreadsByOwnerIdWithPagination = async (ownerId, limit = 20, cursor = null) => {
-  const { lt } = await import("drizzle-orm");
-  
   // Ensure limit is within bounds
   const effectiveLimit = Math.min(Math.max(1, limit), 50);
   

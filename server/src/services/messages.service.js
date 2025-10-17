@@ -1,7 +1,7 @@
 import lodash from "lodash";
 const { get, isNil } = lodash;
 
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, lt } from "drizzle-orm";
 import { db } from "../db/drizzle.js";
 import { messages } from "../db/schema.js";
 
@@ -96,8 +96,6 @@ export const updateMessage = async (messageId, updates) => {
  * @returns {Promise<Object>} Object with items and nextCursor
  */
 export const findMessagesByThreadIdWithPagination = async (threadId, limit = 50, cursor = null) => {
-  const { lt } = await import("drizzle-orm");
-  
   // Ensure limit is within bounds (default 50, max 50)
   const effectiveLimit = Math.min(Math.max(1, limit), 50);
   

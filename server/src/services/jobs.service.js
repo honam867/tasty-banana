@@ -2,7 +2,7 @@ import lodash from "lodash";
 const { get, isEmpty, isNil } = lodash;
 
 import { db } from "../db/drizzle.js";
-import { jobs, images } from "../db/schema.js";
+import { jobs, images, messages } from "../db/schema.js";
 import { eq } from "drizzle-orm";
 import {
   JOB_STATUS,
@@ -16,7 +16,10 @@ import {
 import JobError from "../utils/JobError.js";
 import { generateImage } from "./gemini.service.js";
 import { uploadToR2, getR2Bucket } from "../config/r2.js";
-import { updateMessage, findMessageById } from "./messages.service.js";
+import {
+  updateMessage,
+  createMessage,
+} from "./messages.service.js";
 import { ulid } from "ulid";
 
 /**
@@ -82,7 +85,11 @@ const withRetry = async (operation, options = {}) => {
  * @returns {Promise<any>} Operation result
  * @throws {JobError} If timeout occurs
  */
-const withTimeout = async (operation, timeoutMs, operationName = "Operation") => {
+const withTimeout = async (
+  operation,
+  timeoutMs,
+  operationName = "Operation"
+) => {
   return Promise.race([
     operation(),
     new Promise((_, reject) =>
@@ -112,7 +119,9 @@ const cleanupOrphanedImages = async (storageKeys) => {
     return;
   }
 
-  console.log(`🧹 Cleaning up ${storageKeys.length} orphaned images from R2...`);
+  console.log(
+    `🧹 Cleaning up ${storageKeys.length} orphaned images from R2...`
+  );
 
   for (const key of storageKeys) {
     try {
@@ -180,7 +189,9 @@ export const createJob = async (jobData) => {
   // Validate job type
   if (!VALID_JOB_TYPES.includes(jobType)) {
     throw new JobError(
-      `Invalid job type: ${jobType}. Must be one of: ${VALID_JOB_TYPES.join(", ")}`,
+      `Invalid job type: ${jobType}. Must be one of: ${VALID_JOB_TYPES.join(
+        ", "
+      )}`,
       JOB_ERROR_CODE.INVALID_JOB_TYPE,
       400,
       { jobType, validTypes: VALID_JOB_TYPES }
@@ -190,7 +201,9 @@ export const createJob = async (jobData) => {
   // Validate status
   if (!VALID_JOB_STATUSES.includes(status)) {
     throw new JobError(
-      `Invalid status: ${status}. Must be one of: ${VALID_JOB_STATUSES.join(", ")}`,
+      `Invalid status: ${status}. Must be one of: ${VALID_JOB_STATUSES.join(
+        ", "
+      )}`,
       JOB_ERROR_CODE.INVALID_STATUS,
       400,
       { status, validStatuses: VALID_JOB_STATUSES }
@@ -301,7 +314,9 @@ export const updateJobStatus = async (jobId, newStatus) => {
   // Validate status
   if (!VALID_JOB_STATUSES.includes(newStatus)) {
     throw new JobError(
-      `Invalid status: ${newStatus}. Must be one of: ${VALID_JOB_STATUSES.join(", ")}`,
+      `Invalid status: ${newStatus}. Must be one of: ${VALID_JOB_STATUSES.join(
+        ", "
+      )}`,
       JOB_ERROR_CODE.INVALID_STATUS,
       400,
       { newStatus, validStatuses: VALID_JOB_STATUSES }
@@ -337,7 +352,11 @@ export const updateJobStatus = async (jobId, newStatus) => {
             `Cannot update job status from terminal state "${currentStatus}" to "${newStatus}"`,
             JOB_ERROR_CODE.INVALID_STATUS_TRANSITION,
             400,
-            { currentStatus, newStatus, terminalStatuses: TERMINAL_JOB_STATUSES }
+            {
+              currentStatus,
+              newStatus,
+              terminalStatuses: TERMINAL_JOB_STATUSES,
+            }
           );
         }
 
@@ -434,13 +453,16 @@ export const getJobById = async (jobId) => {
 
     return get(result, "[0]");
   } catch (error) {
-    console.error(`❌ Error fetching job by ID ${jobId}:`, get(error, "message"));
-    
+    console.error(
+      `❌ Error fetching job by ID ${jobId}:`,
+      get(error, "message")
+    );
+
     // If it's already a JobError, re-throw it
     if (error instanceof JobError) {
       throw error;
     }
-    
+
     // Wrap database errors
     throw new JobError(
       `Failed to fetch job: ${get(error, "message")}`,
@@ -667,16 +689,14 @@ export const storeJobImages = async (jobId, generationResult) => {
   if (!isEmpty(errors)) {
     const errorMessage = `Failed to store ${errors.length} of ${imagesList.length} images`;
     console.error(`❌ ${errorMessage}`);
-    
+
     // If ALL images failed, throw error
     if (isEmpty(storedImages)) {
       throw new Error(`${errorMessage}: All image uploads failed`);
     }
-    
+
     // If SOME images failed, log warning but continue
-    console.warn(
-      `⚠️ ${errorMessage}, but ${storedImages.length} succeeded`
-    );
+    console.warn(`⚠️ ${errorMessage}, but ${storedImages.length} succeeded`);
   }
 
   console.log(
@@ -715,12 +735,12 @@ export const getImagesByJobId = async (jobId) => {
       `❌ Error fetching images for job ${jobId}:`,
       get(error, "message")
     );
-    
+
     // If it's already a JobError, re-throw it
     if (error instanceof JobError) {
       throw error;
     }
-    
+
     // Wrap database errors
     throw new JobError(
       `Failed to fetch images: ${get(error, "message")}`,
@@ -772,7 +792,6 @@ export const createAssistantMessageWithJobResult = async (
   }
 
   try {
-    const { createMessage } = await import("./messages.service.js");
     const success = get(jobResult, "success", false);
     const job = get(jobResult, "job");
     const jobStatus = get(job, "status");
@@ -806,7 +825,9 @@ export const createAssistantMessageWithJobResult = async (
         "succeeded"
       );
 
-      console.log(`✅ Assistant message created with ${imageCount} image URL(s)`);
+      console.log(
+        `✅ Assistant message created with ${imageCount} image URL(s)`
+      );
 
       return assistantMessage;
     } else {
@@ -833,15 +854,18 @@ export const createAssistantMessageWithJobResult = async (
       `❌ Failed to create assistant message for job ${jobId}:`,
       get(error, "message")
     );
-    
+
     // If it's already a JobError, re-throw it
     if (error instanceof JobError) {
       throw error;
     }
-    
+
     // Wrap other errors
     throw new JobError(
-      `Failed to create assistant message with job result: ${get(error, "message")}`,
+      `Failed to create assistant message with job result: ${get(
+        error,
+        "message"
+      )}`,
       JOB_ERROR_CODE.MESSAGE_UPDATE_FAILED,
       500,
       { jobId, threadId, originalError: get(error, "message") }
@@ -867,8 +891,6 @@ export const getJobsByThread = async (threadId) => {
 
   try {
     // Join jobs with messages to filter by threadId
-    const { messages } = await import("../db/schema.js");
-
     const result = await db
       .select({
         id: jobs.id,
@@ -891,12 +913,12 @@ export const getJobsByThread = async (threadId) => {
       `❌ Error fetching jobs for thread ${threadId}:`,
       get(error, "message")
     );
-    
+
     // If it's already a JobError, re-throw it
     if (error instanceof JobError) {
       throw error;
     }
-    
+
     // Wrap database errors
     throw new JobError(
       `Failed to fetch jobs for thread: ${get(error, "message")}`,
@@ -962,10 +984,23 @@ export const processJob = async (jobId, threadId) => {
     console.log(`   Job type: ${get(job, "jobType")}`);
     console.log(`   Current status: ${get(job, "status")}`);
 
-    // 2. Update status to 'processing'
+    // 2. Update job status to 'processing'
     await updateJobStatus(jobId, JOB_STATUS.PROCESSING);
 
-    // 3. Extract parameters for image generation
+    // 3. Update user message status to 'processing'
+    try {
+      await updateMessage(messageId, { status: "processing" });
+      console.log(
+        `✅ User message ${messageId} status updated to 'processing'`
+      );
+    } catch (messageUpdateError) {
+      console.error(
+        `⚠️ Failed to update user message status to processing:`,
+        get(messageUpdateError, "message")
+      );
+    }
+
+    // 4. Extract parameters for image generation
     const parameters = get(job, "parameters", {});
     const prompt = get(parameters, "prompt");
 
@@ -1031,8 +1066,16 @@ export const processJob = async (jobId, threadId) => {
 
         const failedJob = await updateJobStatus(jobId, JOB_STATUS.FAILED);
 
-        const errorCode = get(storageError, "code", JOB_ERROR_CODE.STORAGE_FAILED);
-        const errorMessage = get(storageError, "message", "Failed to store generated images");
+        const errorCode = get(
+          storageError,
+          "code",
+          JOB_ERROR_CODE.STORAGE_FAILED
+        );
+        const errorMessage = get(
+          storageError,
+          "message",
+          "Failed to store generated images"
+        );
 
         const storageFailureResult = {
           job: failedJob,
@@ -1044,6 +1087,19 @@ export const processJob = async (jobId, threadId) => {
           },
           success: false,
         };
+
+        // Update user message status to 'failed'
+        try {
+          await updateMessage(messageId, { status: "failed" });
+          console.log(
+            `✅ User message ${messageId} status updated to 'failed' (storage error)`
+          );
+        } catch (messageUpdateError) {
+          console.error(
+            `⚠️ Failed to update user message status:`,
+            get(messageUpdateError, "message")
+          );
+        }
 
         // Create assistant message with storage failure
         try {
@@ -1072,10 +1128,29 @@ export const processJob = async (jobId, threadId) => {
         success: true,
       };
 
-      // 7. Create assistant message with job results
+      // 7. Update user message status to 'succeeded'
       try {
-        await createAssistantMessageWithJobResult(jobId, threadId, successResult);
-        console.log(`✅ Assistant message created with job results for thread ${threadId}`);
+        await updateMessage(messageId, { status: "succeeded" });
+        console.log(
+          `✅ User message ${messageId} status updated to 'succeeded'`
+        );
+      } catch (messageUpdateError) {
+        console.error(
+          `⚠️ Failed to update user message status:`,
+          get(messageUpdateError, "message")
+        );
+      }
+
+      // 8. Create assistant message with job results
+      try {
+        await createAssistantMessageWithJobResult(
+          jobId,
+          threadId,
+          successResult
+        );
+        console.log(
+          `✅ Assistant message created with job results for thread ${threadId}`
+        );
       } catch (messageCreateError) {
         // Log error but don't fail the job - it already succeeded
         console.error(
@@ -1086,7 +1161,7 @@ export const processJob = async (jobId, threadId) => {
 
       return successResult;
     } catch (generationError) {
-      // 8. On generation failure, update status to 'failed'
+      // 9. On generation failure, update status to 'failed'
       console.error(
         `❌ Image generation failed for job ${jobId}:`,
         get(generationError, "message")
@@ -1094,19 +1169,46 @@ export const processJob = async (jobId, threadId) => {
 
       const failedJob = await updateJobStatus(jobId, JOB_STATUS.FAILED);
 
-      const errorCode = get(generationError, "code", JOB_ERROR_CODE.GENERATION_FAILED);
-      const errorMessage = get(generationError, "message", "Image generation failed");
+      const errorCode = get(
+        generationError,
+        "code",
+        JOB_ERROR_CODE.GENERATION_FAILED
+      );
+      const errorMessage = get(
+        generationError,
+        "message",
+        "Image generation failed"
+      );
 
       const generationFailureResult = {
         job: failedJob,
         error: {
           code: errorCode,
           message: errorMessage,
-          status: get(generationError, "statusCode", get(generationError, "status", 500)),
-          originalError: get(generationError, "context", get(generationError, "originalError")),
+          status: get(
+            generationError,
+            "statusCode",
+            get(generationError, "status", 500)
+          ),
+          originalError: get(
+            generationError,
+            "context",
+            get(generationError, "originalError")
+          ),
         },
         success: false,
       };
+
+      // Update user message status to 'failed'
+      try {
+        await updateMessage(messageId, { status: "failed" });
+        console.log(`✅ User message ${messageId} status updated to 'failed'`);
+      } catch (messageUpdateError) {
+        console.error(
+          `⚠️ Failed to update user message status:`,
+          get(messageUpdateError, "message")
+        );
+      }
 
       // Create assistant message with generation failure
       try {
@@ -1131,7 +1233,7 @@ export const processJob = async (jobId, threadId) => {
       get(error, "message")
     );
 
-      // Try to mark job as failed if possible
+    // Try to mark job as failed if possible
     try {
       await updateJobStatus(jobId, JOB_STATUS.FAILED);
 
@@ -1151,7 +1253,11 @@ export const processJob = async (jobId, threadId) => {
       };
 
       try {
-        await createAssistantMessageWithJobResult(jobId, threadId, failureResult);
+        await createAssistantMessageWithJobResult(
+          jobId,
+          threadId,
+          failureResult
+        );
       } catch (messageCreateError) {
         console.error(
           `⚠️ Failed to create assistant message after job failure:`,

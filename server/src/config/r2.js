@@ -1,7 +1,7 @@
 import dotenv from "dotenv";
 dotenv.config();
 
-import { S3Client } from "@aws-sdk/client-s3";
+import { S3Client, HeadBucketCommand } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
 import lodash from "lodash";
 const { get, isEmpty } = lodash;
@@ -171,7 +171,6 @@ export const testR2Connection = async () => {
     const bucket = getR2Bucket();
     
     // Try to head the bucket to verify access
-    const { HeadBucketCommand } = await import("@aws-sdk/client-s3");
     await client.send(new HeadBucketCommand({ Bucket: bucket }));
     
     console.log(`✅ R2 connection successful. Bucket '${bucket}' is accessible.`);
