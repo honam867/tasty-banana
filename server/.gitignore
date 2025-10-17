@@ -29,6 +29,10 @@ dist/
 build/
 coverage/
 
+# Test output (generated images, etc.)
+tests/output/
+scripts/output/
+
 # Optional: nếu dùng PM2 hoặc các tool tương tự
 pids/
 *.pid
