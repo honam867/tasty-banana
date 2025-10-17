@@ -27,6 +27,7 @@ alwaysApply: true
   - **For ES Module projects** (`"type": "module"` in package.json): Import default then destructure
   - **Why this pattern?** The regular `lodash` package is CommonJS. In ES modules, you must import the default export first, then destructure the functions you need
   - **Alternative:** Use `lodash-es` package if you prefer direct named imports, but this codebase uses regular `lodash`
+  - **Every constant should be place at `./utils/constant.js`**
 
   ```javascript
   // ✅ DO: CommonJS require style

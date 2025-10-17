@@ -58,6 +58,37 @@ export const findMessagesByThreadId = async (threadId) => {
 };
 
 /**
+ * Update a message's status and/or content
+ * @param {string} messageId - Message ID (UUID)
+ * @param {Object} updates - Updates to apply
+ * @param {string} [updates.status] - New status
+ * @param {string} [updates.content] - New content
+ * @returns {Promise<Object|null>} Updated message object or null
+ */
+export const updateMessage = async (messageId, updates) => {
+  if (isNil(messageId)) {
+    throw new Error("messageId is required");
+  }
+
+  if (isNil(updates) || Object.keys(updates).length === 0) {
+    throw new Error("At least one update field is required");
+  }
+
+  const updateData = {
+    ...updates,
+    updatedAt: new Date(),
+  };
+
+  const result = await db
+    .update(messages)
+    .set(updateData)
+    .where(eq(messages.id, messageId))
+    .returning();
+
+  return get(result, "[0]", null);
+};
+
+/**
  * Find messages in a thread with cursor-based pagination
  * @param {string} threadId - Thread ID
  * @param {number} limit - Number of messages to return (default 50, max 50)
@@ -101,3 +132,10 @@ export const findMessagesByThreadIdWithPagination = async (threadId, limit = 50,
   };
 };
 
+export default {
+  createMessage,
+  findMessageById,
+  findMessagesByThreadId,
+  findMessagesByThreadIdWithPagination,
+  updateMessage,
+};
