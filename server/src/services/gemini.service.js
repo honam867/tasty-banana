@@ -92,10 +92,19 @@ export const getAuthenticatedClient = async () => {
  * @throws {Error} If required parameters are missing or invalid
  */
 export const buildGenerateRequest = (params) => {
-  const prompt = get(params, "prompt");
+  let prompt = get(params, "prompt");
 
   if (isEmpty(prompt)) {
     throw new Error("Prompt is required for image generation");
+  }
+
+  // Ensure prompt starts with imperative verb for Vertex AI Imagen
+  // Check common action verbs at the start of prompt
+  const trimmedPrompt = prompt.trim();
+  const startsWithAction = /^(generate|create|draw|show|paint|design|illustrate|make|produce|render)/i.test(trimmedPrompt);
+  
+  if (!startsWithAction) {
+    prompt = `Generate ${trimmedPrompt}`;
   }
 
   // Validate and set defaults

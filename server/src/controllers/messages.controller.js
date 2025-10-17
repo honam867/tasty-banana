@@ -108,38 +108,29 @@ export const createThreadMessage = async (req, res) => {
       });
     }
 
-    // 8. Create assistant message with status 'processing'
-    const assistantMessage = await createMessage(
-      threadId,
-      "assistant",
-      "Processing your request...",
-      "processing"
-    );
-
-    if (isNil(assistantMessage)) {
-      return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-        success: false,
-        status: 500,
-        message: "Failed to create assistant message",
-      });
-    }
-
-    // 9. Trigger async job processing (fire and forget - don't await)
+    // 8. Trigger async job processing (fire and forget - don't await)
+    // The processJob will create the assistant message when complete
     const jobId = get(job, "id");
-    processJob(jobId).catch((error) => {
+    processJob(jobId, threadId).catch((error) => {
       console.error(`❌ Error processing job ${jobId}:`, get(error, "message"));
     });
 
-    // 10. Return enhanced 201 response immediately
+    // 9. Return 201 response immediately with user message and job info
+    // Frontend will poll /api/threads/:threadId/messages to get the assistant response
     return res.status(HTTP_STATUS.CREATED).json({
       success: true,
       status: 201,
       message: "Message created successfully",
       data: {
         userMessage,
-        assistantMessage,
-        job,
-        provider,
+        job: {
+          id: get(job, "id"),
+          status: get(job, "status"),
+        },
+        provider: {
+          id: get(provider, "id"),
+          name: get(provider, "name"),
+        },
       },
     });
   } catch (error) {

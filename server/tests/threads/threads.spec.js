@@ -333,32 +333,19 @@ describe("Threads API Routes - Basic Structure Test", () => {
       expect(get(userMessage, "createdAt")).toBeDefined();
       expect(get(userMessage, "updatedAt")).toBeDefined();
       
-      // Verify assistantMessage
-      const assistantMessage = get(data, "assistantMessage");
-      expect(get(assistantMessage, "id")).toBeDefined();
-      expect(get(assistantMessage, "threadId")).toBe(testThreadId);
-      expect(get(assistantMessage, "role")).toBe("assistant");
-      expect(get(assistantMessage, "content")).toBe("Processing your request...");
-      expect(get(assistantMessage, "status")).toBe("processing");
-      expect(get(assistantMessage, "createdAt")).toBeDefined();
-      
-      // Verify job
+      // Verify job (only basic info is returned now)
       const job = get(data, "job");
       expect(get(job, "id")).toBeDefined();
-      expect(get(job, "messageId")).toBe(get(userMessage, "id"));
-      expect(get(job, "jobType")).toBe("text2img");
       expect(get(job, "status")).toBe("queued");
-      expect(get(job, "parameters")).toBeDefined();
-      expect(get(job, "parameters.prompt")).toBe("Generate a beautiful sunset image");
-      expect(get(job, "parameters.numberOfImages")).toBe(1);
-      expect(get(job, "parameters.aspectRatio")).toBe("1:1");
-      expect(get(job, "createdAt")).toBeDefined();
       
-      // Verify provider
+      // Verify provider (only basic info is returned now)
       const provider = get(data, "provider");
       expect(get(provider, "id")).toBeDefined();
       expect(get(provider, "name")).toBe("gemini-2.5-flash");
-      expect(get(provider, "config")).toBeDefined();
+      
+      // Assistant message is NOT immediately created anymore
+      // It will be created asynchronously when job processing completes
+      expect(get(data, "assistantMessage")).toBeUndefined();
       
       expect(get(response, "body.message")).toBe("Message created successfully");
     });

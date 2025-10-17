@@ -732,16 +732,16 @@ export const getImagesByJobId = async (jobId) => {
 };
 
 /**
- * Update message with job results after processing
+ * Create assistant message with job results after processing
  * @param {string} jobId - UUID of the job
- * @param {string} messageId - UUID of the message to update
+ * @param {string} threadId - UUID of the thread
  * @param {Object} jobResult - Result from processJob
- * @returns {Promise<Object>} Updated message object
- * @throws {JobError} If validation fails or update fails
+ * @returns {Promise<Object>} Created assistant message object
+ * @throws {JobError} If validation fails or creation fails
  */
-export const updateMessageWithJobResult = async (
+export const createAssistantMessageWithJobResult = async (
   jobId,
-  messageId,
+  threadId,
   jobResult
 ) => {
   if (isNil(jobId) || isEmpty(jobId)) {
@@ -753,12 +753,12 @@ export const updateMessageWithJobResult = async (
     );
   }
 
-  if (isNil(messageId) || isEmpty(messageId)) {
+  if (isNil(threadId) || isEmpty(threadId)) {
     throw new JobError(
-      "messageId is required",
+      "threadId is required",
       JOB_ERROR_CODE.MISSING_REQUIRED_FIELD,
       400,
-      { field: "messageId" }
+      { field: "threadId" }
     );
   }
 
@@ -772,16 +772,17 @@ export const updateMessageWithJobResult = async (
   }
 
   try {
+    const { createMessage } = await import("./messages.service.js");
     const success = get(jobResult, "success", false);
     const job = get(jobResult, "job");
     const jobStatus = get(job, "status");
 
     console.log(
-      `📝 Updating message ${messageId} with job result (status: ${jobStatus})`
+      `📝 Creating assistant message for job ${jobId} in thread ${threadId} (status: ${jobStatus})`
     );
 
     if (success) {
-      // Success case: Update message with image URLs
+      // Success case: Create message with image URLs
       const storedImages = get(jobResult, "storedImages", []);
 
       if (isEmpty(storedImages)) {
@@ -798,34 +799,38 @@ export const updateMessageWithJobResult = async (
         .map((url, idx) => `${idx + 1}. ${url}`)
         .join("\n")}`;
 
-      const updatedMessage = await updateMessage(messageId, {
-        status: "succeeded",
-        content: messageContent,
-      });
+      const assistantMessage = await createMessage(
+        threadId,
+        "assistant",
+        messageContent,
+        "succeeded"
+      );
 
-      console.log(`✅ Message updated with ${imageCount} image URL(s)`);
+      console.log(`✅ Assistant message created with ${imageCount} image URL(s)`);
 
-      return updatedMessage;
+      return assistantMessage;
     } else {
-      // Failure case: Update message with error details
+      // Failure case: Create message with error details
       const error = get(jobResult, "error", {});
       const errorCode = get(error, "code", "UNKNOWN_ERROR");
       const errorMessage = get(error, "message", "Job processing failed");
 
       const messageContent = `Image generation failed.\n\nError: ${errorCode}\nMessage: ${errorMessage}`;
 
-      const updatedMessage = await updateMessage(messageId, {
-        status: "failed",
-        content: messageContent,
-      });
+      const assistantMessage = await createMessage(
+        threadId,
+        "assistant",
+        messageContent,
+        "failed"
+      );
 
-      console.log(`✅ Message updated with error details`);
+      console.log(`✅ Assistant message created with error details`);
 
-      return updatedMessage;
+      return assistantMessage;
     }
   } catch (error) {
     console.error(
-      `❌ Failed to update message ${messageId}:`,
+      `❌ Failed to create assistant message for job ${jobId}:`,
       get(error, "message")
     );
     
@@ -836,10 +841,10 @@ export const updateMessageWithJobResult = async (
     
     // Wrap other errors
     throw new JobError(
-      `Failed to update message with job result: ${get(error, "message")}`,
+      `Failed to create assistant message with job result: ${get(error, "message")}`,
       JOB_ERROR_CODE.MESSAGE_UPDATE_FAILED,
       500,
-      { jobId, messageId, originalError: get(error, "message") }
+      { jobId, threadId, originalError: get(error, "message") }
     );
   }
 };
@@ -908,12 +913,14 @@ export const getJobsByThread = async (threadId) => {
  * 1. Updating job status to 'processing'
  * 2. Calling Gemini service to generate images
  * 3. Updating job status to 'succeeded' or 'failed' based on outcome
+ * 4. Creating assistant message with results
  *
  * @param {string} jobId - UUID of the job to process
+ * @param {string} threadId - UUID of the thread (for creating assistant message)
  * @returns {Promise<Object>} Object containing job and generation result
  * @throws {Error} If job not found or processing fails
  */
-export const processJob = async (jobId) => {
+export const processJob = async (jobId, threadId) => {
   if (isNil(jobId) || isEmpty(jobId)) {
     throw new JobError(
       "jobId is required",
@@ -923,7 +930,16 @@ export const processJob = async (jobId) => {
     );
   }
 
-  console.log(`🔄 Starting job processing: ${jobId}`);
+  if (isNil(threadId) || isEmpty(threadId)) {
+    throw new JobError(
+      "threadId is required",
+      JOB_ERROR_CODE.MISSING_REQUIRED_FIELD,
+      400,
+      { field: "threadId" }
+    );
+  }
+
+  console.log(`🔄 Starting job processing: ${jobId} for thread: ${threadId}`);
 
   let job;
   let messageId;
@@ -1029,17 +1045,17 @@ export const processJob = async (jobId) => {
           success: false,
         };
 
-        // Update message with storage failure
+        // Create assistant message with storage failure
         try {
-          await updateMessageWithJobResult(
+          await createAssistantMessageWithJobResult(
             jobId,
-            messageId,
+            threadId,
             storageFailureResult
           );
-        } catch (messageUpdateError) {
+        } catch (messageCreateError) {
           console.error(
-            `⚠️ Failed to update message after storage failure:`,
-            get(messageUpdateError, "message")
+            `⚠️ Failed to create assistant message after storage failure:`,
+            get(messageCreateError, "message")
           );
         }
 
@@ -1056,15 +1072,15 @@ export const processJob = async (jobId) => {
         success: true,
       };
 
-      // 7. Update the related message with job results
+      // 7. Create assistant message with job results
       try {
-        await updateMessageWithJobResult(jobId, messageId, successResult);
-        console.log(`✅ Message ${messageId} updated with job results`);
-      } catch (messageUpdateError) {
+        await createAssistantMessageWithJobResult(jobId, threadId, successResult);
+        console.log(`✅ Assistant message created with job results for thread ${threadId}`);
+      } catch (messageCreateError) {
         // Log error but don't fail the job - it already succeeded
         console.error(
-          `⚠️ Failed to update message after successful job:`,
-          get(messageUpdateError, "message")
+          `⚠️ Failed to create assistant message after successful job:`,
+          get(messageCreateError, "message")
         );
       }
 
@@ -1092,17 +1108,17 @@ export const processJob = async (jobId) => {
         success: false,
       };
 
-      // Update message with generation failure
+      // Create assistant message with generation failure
       try {
-        await updateMessageWithJobResult(
+        await createAssistantMessageWithJobResult(
           jobId,
-          messageId,
+          threadId,
           generationFailureResult
         );
-      } catch (messageUpdateError) {
+      } catch (messageCreateError) {
         console.error(
-          `⚠️ Failed to update message after generation failure:`,
-          get(messageUpdateError, "message")
+          `⚠️ Failed to create assistant message after generation failure:`,
+          get(messageCreateError, "message")
         );
       }
 
@@ -1115,34 +1131,32 @@ export const processJob = async (jobId) => {
       get(error, "message")
     );
 
-    // Try to mark job as failed if possible
+      // Try to mark job as failed if possible
     try {
       await updateJobStatus(jobId, JOB_STATUS.FAILED);
 
-      // Try to update message if we have the messageId
-      if (messageId) {
-        const errorCode = get(error, "code", JOB_ERROR_CODE.UNKNOWN_ERROR);
-        const errorMessage = get(error, "message", "Job processing failed");
+      // Try to create assistant message with failure info
+      const errorCode = get(error, "code", JOB_ERROR_CODE.UNKNOWN_ERROR);
+      const errorMessage = get(error, "message", "Job processing failed");
 
-        const failureResult = {
-          job: { id: jobId, status: JOB_STATUS.FAILED },
-          error: {
-            code: errorCode,
-            message: errorMessage,
-            status: get(error, "statusCode", 500),
-            originalError: get(error, "context"),
-          },
-          success: false,
-        };
+      const failureResult = {
+        job: { id: jobId, status: JOB_STATUS.FAILED },
+        error: {
+          code: errorCode,
+          message: errorMessage,
+          status: get(error, "statusCode", 500),
+          originalError: get(error, "context"),
+        },
+        success: false,
+      };
 
-        try {
-          await updateMessageWithJobResult(jobId, messageId, failureResult);
-        } catch (messageUpdateError) {
-          console.error(
-            `⚠️ Failed to update message after job failure:`,
-            get(messageUpdateError, "message")
-          );
-        }
+      try {
+        await createAssistantMessageWithJobResult(jobId, threadId, failureResult);
+      } catch (messageCreateError) {
+        console.error(
+          `⚠️ Failed to create assistant message after job failure:`,
+          get(messageCreateError, "message")
+        );
       }
     } catch (updateError) {
       console.error(
@@ -1174,6 +1188,6 @@ export default {
   getImagesByJobId,
   storeGeneratedImage,
   storeJobImages,
-  updateMessageWithJobResult,
+  createAssistantMessageWithJobResult,
   processJob,
 };

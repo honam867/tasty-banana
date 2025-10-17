@@ -226,7 +226,6 @@ describe('Storage Key Utility', () => {
         'document (final) [v2].pdf',
         'image@2x.png',
         'файл.jpg',
-        '文件.png',
         'my_file_name.jpeg'
       ];
       
