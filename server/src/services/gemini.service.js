@@ -87,7 +87,6 @@ export const getAuthenticatedClient = async () => {
  * @param {string} [params.aspectRatio='1:1'] - Aspect ratio (1:1, 9:16, 16:9, 4:3, 3:4)
  * @param {number} [params.seed] - Random seed for reproducibility
  * @param {string} [params.language='auto'] - Language code for prompt
- * @param {boolean} [params.addWatermark=true] - Whether to add watermark
  * @param {boolean} [params.enablePromptRewriting=true] - Enable LLM-based prompt rewriting
  * @param {string} [params.personGeneration='allow_all'] - Person generation setting: 'dont_allow', 'allow_adult', or 'allow_all'
  * @returns {Object} Formatted request object for Vertex AI
@@ -137,7 +136,6 @@ export const buildGenerateRequest = (params) => {
   }
 
   const seed = get(params, "seed");
-  const addWatermark = get(params, "addWatermark", true);
 
   // Build request - instances only contains prompt
   const instances = [{ prompt }];
@@ -155,7 +153,6 @@ export const buildGenerateRequest = (params) => {
   const requestParams = {
     sampleCount: numberOfImages,
     aspectRatio,
-    addWatermark,
     enablePromptRewriting: get(params, "enablePromptRewriting", true),
     personGeneration, // Allow generation of people of all ages (adults and children)
   };
@@ -303,7 +300,6 @@ export const mapGeminiError = (error) => {
  * @param {string} [params.aspectRatio='1:1'] - Aspect ratio
  * @param {number} [params.seed] - Random seed
  * @param {string} [params.language='auto'] - Language code
- * @param {boolean} [params.addWatermark=true] - Add watermark
  * @param {boolean} [params.enablePromptRewriting=true] - Enable LLM-based prompt rewriting
  * @param {string} [params.personGeneration='allow_all'] - Person generation: 'dont_allow', 'allow_adult', 'allow_all'
  * @returns {Promise<Object>} Generated images data

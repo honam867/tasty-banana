@@ -1079,7 +1079,7 @@
         "dependencies": [
           7
         ],
-        "status": "pending",
+        "status": "done",
         "subtasks": []
       },
       {
@@ -1092,7 +1092,7 @@
         "dependencies": [
           5
         ],
-        "status": "pending",
+        "status": "done",
         "subtasks": []
       },
       {
@@ -1108,11 +1108,78 @@
         ],
         "status": "pending",
         "subtasks": []
+      },
+      {
+        "id": 11,
+        "title": "Implement customizable image generation parameters from user requests",
+        "description": "Allow users to send custom image generation parameters (numberOfImages, aspectRatio, addWatermark, seed) when creating messages. If parameters are not provided, use defaults from constants file. personGeneration and enablePromptRewriting remain fixed defaults and are not accepted from requests. Store the user-customizable generation parameters in images metadata.",
+        "status": "done",
+        "dependencies": [],
+        "priority": "high",
+        "details": "## Current State\n- Image generation parameters are hardcoded in `messages.controller.js` (lines 95-100):\n  - numberOfImages: 1\n  - aspectRatio: \"1:1\"\n  - addWatermark: true\n- These parameters are stored in `jobs.parameters` jsonb field\n- Parameters are passed to `gemini.service.js` generateImage function\n\n## User-Customizable Parameters (from gemini.service.js)\n- numberOfImages: 1-8 (default: 1)\n- aspectRatio: \"1:1\" | \"9:16\" | \"16:9\" | \"4:3\" | \"3:4\" (default: \"1:1\")\n- addWatermark: boolean (default: true)\n- seed: number (optional)\n\n## Fixed (Non-Customizable) Defaults\n- personGeneration: \"allow_all\" (fixed default)\n- enablePromptRewriting: true (fixed default)\nThese are not accepted from the request body and should not be user-configurable.\n\n## Implementation Tasks\n\n### 1. Add Default Generation Parameters to Constants\n- Add IMAGE_GENERATION_DEFAULTS constant in `server/src/utils/constant.js`\n- Define defaults for all parameters used by generation, including fixed ones\n- Export for use in controller and downstream services\n\n### 2. Update Messages Controller\n- Modify `createThreadMessage` in `server/src/controllers/messages.controller.js`\n- Accept optional `generationParams` from request body with only the allowed keys: numberOfImages, aspectRatio, addWatermark, seed\n- Validate incoming parameters against allowed values; reject unknown keys (e.g., personGeneration, enablePromptRewriting)\n- Merge user params with defaults (fixed defaults included via constants)\n- Pass merged params to createJob\n\n### 3. Update Images Metadata Storage\n- Modify `storeGeneratedImage` in `server/src/services/jobs.service.js`\n- Store only user-customizable generation parameters in images.metadata: numberOfImages, aspectRatio, addWatermark, seed (omit if null/undefined)\n\n### 4. Update Parameter Validation\n- Add validation helper function for generation parameters\n- Validate numberOfImages range (1-8)\n- Validate aspectRatio values\n- Validate addWatermark boolean\n- Validate seed as optional numeric\n- Reject unsupported keys with helpful errors\n\n### 5. Update Documentation/Comments\n- Update JSDoc comments for createThreadMessage\n- Document the new generationParams schema (only allowed keys)\n- Note that personGeneration and enablePromptRewriting are fixed defaults and not accepted from requests\n- Update any relevant API documentation\n\n## Files to Modify\n1. `server/src/utils/constant.js` - Add IMAGE_GENERATION_DEFAULTS\n2. `server/src/controllers/messages.controller.js` - Accept and validate params\n3. `server/src/services/jobs.service.js` - Store customizable params in images.metadata\n\n## Example Request Body\n{\n  \"role\": \"user\",\n  \"content\": \"A beautiful sunset over mountains\",\n  \"generationParams\": {\n    \"numberOfImages\": 2,\n    \"aspectRatio\": \"16:9\",\n    \"addWatermark\": false,\n    \"seed\": 12345\n  }\n}\n\n## Testing Considerations\n- Test with no generationParams (should use defaults, including fixed defaults internally)\n- Test with partial generationParams (should merge with defaults)\n- Test with invalid values or unsupported keys (e.g., personGeneration) to ensure validation errors with 400 INVALID_GENERATION_PARAMS\n- Verify images.metadata stores only the customizable parameters and omits seed if null",
+        "testStrategy": "End-to-end tests covering controller validation and job processing: (1) create message without generationParams and assert jobs.parameters includes fixed defaults but images.metadata contains only allowed keys; (2) partial and full valid payloads merge correctly; (3) payloads including unsupported keys (personGeneration, enablePromptRewriting) return 400 with INVALID_GENERATION_PARAMS; (4) verify images metadata values and omission of seed when not provided.",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Add IMAGE_GENERATION_DEFAULTS to constants.js",
+            "description": "Create and export a single source of truth for default image generation parameters.",
+            "dependencies": [],
+            "details": "In server/src/utils/constant.js, add and export IMAGE_GENERATION_DEFAULTS with defaults: { numberOfImages: 1, aspectRatio: \"1:1\", addWatermark: true, seed: null, personGeneration: \"allow_all\", enablePromptRewriting: true }. Use named export and ensure existing imports remain unaffected. Note: personGeneration and enablePromptRewriting are fixed defaults and not user-configurable; they exist here to be applied internally when merging and passed to gemini.service.",
+            "status": "done",
+            "testStrategy": "Add a lightweight unit test that imports constants.js and asserts the default values and keys match the expected schema, including fixed defaults."
+          },
+          {
+            "id": 2,
+            "title": "Implement generationParams validation helper",
+            "description": "Create a reusable validator for generation parameters with clear error messages.",
+            "dependencies": [
+              1
+            ],
+            "details": "Add server/src/utils/generationParams.validation.js exporting validateGenerationParams(params). Validate only user-customizable keys: numberOfImages is integer 1-8; aspectRatio is one of [\"1:1\",\"9:16\",\"16:9\",\"4:3\",\"3:4\"]; addWatermark boolean; seed optional numeric. If unsupported keys are present (e.g., personGeneration, enablePromptRewriting), include errors identifying unsupported parameters. Return { isValid, errors, sanitized } without mutating input. Do not apply defaults here; only validate and sanitize the allowed keys.",
+            "status": "done",
+            "testStrategy": "Unit tests for validator: cover valid cases, boundary values, invalid types/enums, missing/optional seed, and presence of unsupported keys. Assert error messages and sanitized output."
+          },
+          {
+            "id": 3,
+            "title": "Update createThreadMessage to accept/merge generationParams",
+            "description": "Modify messages.controller.js to accept optional generationParams, validate, merge with defaults, and pass to job creation.",
+            "dependencies": [
+              1,
+              2
+            ],
+            "details": "In server/src/controllers/messages.controller.js, read req.body.generationParams. Call validateGenerationParams; if invalid, return 400 with code INVALID_GENERATION_PARAMS and error list. Only accept the allowed keys: numberOfImages, aspectRatio, addWatermark, seed. Merge with IMAGE_GENERATION_DEFAULTS via { ...IMAGE_GENERATION_DEFAULTS, ...sanitizedParams }. Remove the old hardcoded defaults (lines ~95-100). Pass merged params into jobs.service.createJob and ensure jobs.parameters stores the full merged set (including fixed defaults). Keep existing async job processing intact and pass merged params downstream to gemini.service.generateImage via processJob.",
+            "status": "done",
+            "testStrategy": "Integration tests for controller: (1) no generationParams uses defaults (including fixed defaults); (2) partial params merge with defaults; (3) invalid values or unsupported keys return 400 with clear errors; (4) full valid payload flows and jobs.parameters contains merged values with fixed defaults."
+          },
+          {
+            "id": 4,
+            "title": "Persist generation parameters in images.metadata",
+            "description": "Update jobs.service.js to store generation parameters in each image’s metadata.",
+            "dependencies": [
+              3
+            ],
+            "details": "In server/src/services/jobs.service.js, update storeGeneratedImage to include only user-customizable generation parameters in the images.metadata jsonb field. Persist keys: numberOfImages, aspectRatio, addWatermark, seed (omit if null/undefined). Ensure metadata merges with any existing fields (e.g., provider, prompt, aspect info) without overwriting. Verify that processJob passes the merged params to the storage layer and that subsequent GET endpoints return metadata as expected.",
+            "status": "done",
+            "testStrategy": "Unit and integration tests: after a job succeeds, fetch images and assert metadata includes the required customizable parameter keys and values only. Test with seed provided and absent."
+          },
+          {
+            "id": 5,
+            "title": "Update documentation and JSDoc for generationParams",
+            "description": "Document the new generationParams schema and defaults in code comments and API docs.",
+            "dependencies": [
+              3,
+              4
+            ],
+            "details": "Add JSDoc to createThreadMessage explaining generationParams structure, allowed keys (numberOfImages, aspectRatio, addWatermark, seed), defaults, and validation errors. Explicitly document that personGeneration and enablePromptRewriting are fixed defaults and not accepted from requests; attempts to include them result in validation errors. Update any OpenAPI/README/API docs with the schema, allowed values, defaults from IMAGE_GENERATION_DEFAULTS, and example request/response. Ensure comments in messages.controller.js and jobs.service.js reflect new behavior.",
+            "status": "done",
+            "testStrategy": "Docs review plus contract tests: verify controller error responses match documented schema; ensure example request works in an integration test and documented fields (only allowed keys) appear in metadata."
+          }
+        ]
       }
     ],
     "metadata": {
       "created": "2025-10-14T16:19:11.264Z",
-      "updated": "2025-10-17T12:54:15.743Z",
+      "updated": "2025-10-18T08:31:19.251Z",
       "description": "Tasks for image_generation_integration context"
     }
   }

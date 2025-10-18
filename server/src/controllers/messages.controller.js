@@ -2,15 +2,24 @@ import lodash from "lodash";
 const { get, isNil, isEmpty } = lodash;
 
 import { createMessage, findMessagesByThreadIdWithPagination } from "../services/messages.service.js";
-import { isThreadOwnedByUser } from "../services/threads.service.js";
+import { isThreadOwnedByUser, findThreadById, updateThreadName } from "../services/threads.service.js";
 import { getDefaultProvider } from "../services/providers.service.js";
 import { createJob, processJob } from "../services/jobs.service.js";
-import { HTTP_STATUS, JOB_TYPE } from "../utils/constant.js";
+import { HTTP_STATUS, JOB_TYPE, IMAGE_GENERATION_DEFAULTS } from "../utils/constant.js";
 import { sendError, sendWarning } from "../utils/response.js";
+import { validateGenerationParams } from "../utils/generationParams.validation.js";
 
 /**
  * POST /api/threads/:threadId/messages - Create a new message in a thread
  * Enhanced version: Creates user message, job, assistant message, and triggers async processing
+ * 
+ * Request body accepts optional generationParams:
+ * - numberOfImages: 1-8 (default: 1)
+ * - aspectRatio: "1:1" | "9:16" | "16:9" | "4:3" | "3:4" (default: "1:1")
+ * - seed: number (optional)
+ * 
+ * Note: personGeneration and enablePromptRewriting are fixed defaults and not accepted from requests
+ * 
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
  */
@@ -20,6 +29,7 @@ export const createThreadMessage = async (req, res) => {
     const threadId = get(req, "params.threadId");
     const content = get(req, "body.content");
     const role = get(req, "body.role");
+    const generationParams = get(req, "body.generationParams");
     
     // 1. Validate authentication
     if (isNil(userId)) {
@@ -53,7 +63,26 @@ export const createThreadMessage = async (req, res) => {
       return sendWarning(res, "Message role must be 'user'");
     }
 
-    // 4. Check thread ownership
+    // 4. Validate and merge generation parameters
+    const paramValidation = validateGenerationParams(generationParams);
+    
+    if (!paramValidation.isValid) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({
+        success: false,
+        status: 400,
+        code: "INVALID_GENERATION_PARAMS",
+        message: "Invalid generation parameters",
+        errors: paramValidation.errors,
+      });
+    }
+
+    // Merge user params with defaults (including fixed defaults)
+    const finalGenerationParams = {
+      ...IMAGE_GENERATION_DEFAULTS,
+      ...paramValidation.sanitized,
+    };
+
+    // 5. Check thread ownership
     const isOwner = await isThreadOwnedByUser(threadId, userId);
     
     if (!isOwner) {
@@ -64,7 +93,7 @@ export const createThreadMessage = async (req, res) => {
       });
     }
 
-    // 5. Create the user message
+    // 6. Create the user message
     const userMessage = await createMessage(threadId, role, content);
 
     if (isNil(userMessage)) {
@@ -75,7 +104,15 @@ export const createThreadMessage = async (req, res) => {
       });
     }
 
-    // 6. Fetch the default provider (Gemini)
+    // 6.1. Auto-populate thread name from first message if not set
+    const thread = await findThreadById(threadId);
+    if (thread && isNil(thread.name)) {
+      // Set thread name to the message content (truncate if too long)
+      const threadName = content.length > 100 ? content.substring(0, 100) + "..." : content;
+      await updateThreadName(threadId, threadName);
+    }
+
+    // 7. Fetch the default provider (Gemini)
     const provider = await getDefaultProvider();
 
     if (isNil(provider)) {
@@ -86,7 +123,7 @@ export const createThreadMessage = async (req, res) => {
       });
     }
 
-    // 7. Create job with status 'queued'
+    // 8. Create job with status 'queued' and merged generation parameters
     const job = await createJob({
       messageId: get(userMessage, "id"),
       providerId: get(provider, "id"),
@@ -94,9 +131,7 @@ export const createThreadMessage = async (req, res) => {
       status: "queued",
       parameters: {
         prompt: content,
-        numberOfImages: 1,
-        aspectRatio: "1:1",
-        addWatermark: true,
+        ...finalGenerationParams,
       },
     });
 
@@ -108,14 +143,14 @@ export const createThreadMessage = async (req, res) => {
       });
     }
 
-    // 8. Trigger async job processing (fire and forget - don't await)
+    // 9. Trigger async job processing (fire and forget - don't await)
     // The processJob will create the assistant message when complete
     const jobId = get(job, "id");
     processJob(jobId, threadId).catch((error) => {
       console.error(`❌ Error processing job ${jobId}:`, get(error, "message"));
     });
 
-    // 9. Return 201 response immediately with user message and job info
+    // 10. Return 201 response immediately with user message and job info
     // Frontend will poll /api/threads/:threadId/messages to get the assistant response
     return res.status(HTTP_STATUS.CREATED).json({
       success: true,
@@ -126,6 +161,7 @@ export const createThreadMessage = async (req, res) => {
         job: {
           id: get(job, "id"),
           status: get(job, "status"),
+          parameters: get(job, "parameters"),
         },
         provider: {
           id: get(provider, "id"),

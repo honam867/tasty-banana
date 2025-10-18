@@ -5,7 +5,8 @@ import {
   createThread, 
   findThreadsByOwnerIdWithPagination,
   findThreadById,
-  isThreadOwnedByUser
+  isThreadOwnedByUser,
+  deleteThread
 } from "../services/threads.service.js";
 import { HTTP_STATUS } from "../utils/constant.js";
 import { sendError, sendNotFound } from "../utils/response.js";
@@ -131,6 +132,59 @@ export const getThread = async (req, res) => {
       status: 200,
       message: "Thread retrieved successfully",
       data: thread,
+    });
+  } catch (error) {
+    sendError(res, error);
+  }
+};
+
+/**
+ * DELETE /api/threads/:threadId - Delete a thread (ownership enforced)
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+export const deleteThreadById = async (req, res) => {
+  try {
+    const userId = get(req, "user.id");
+    const threadId = get(req, "params.threadId");
+    
+    if (isNil(userId)) {
+      return res.status(HTTP_STATUS.UNAUTHENTICATED).json({
+        success: false,
+        status: 401,
+        message: "User not authenticated",
+      });
+    }
+
+    if (isNil(threadId)) {
+      return sendNotFound(res, "Thread ID is required");
+    }
+
+    // Check if thread exists and belongs to user
+    const thread = await findThreadById(threadId);
+    
+    if (isNil(thread)) {
+      return sendNotFound(res, "Thread not found");
+    }
+
+    // Check ownership
+    const isOwner = await isThreadOwnedByUser(threadId, userId);
+    
+    if (!isOwner) {
+      return res.status(HTTP_STATUS.UNAUTHORIZED).json({
+        success: false,
+        status: 403,
+        message: "You do not have permission to delete this thread",
+      });
+    }
+
+    // Delete the thread
+    await deleteThread(threadId);
+
+    return res.status(HTTP_STATUS.SUCCESS).json({
+      success: true,
+      status: 200,
+      message: "Thread deleted successfully",
     });
   } catch (error) {
     sendError(res, error);
