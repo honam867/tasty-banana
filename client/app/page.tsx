@@ -1,145 +1,233 @@
 "use client";
 
+import { Background3D } from "@/components/ui/background-3d";
+import { Navbar } from "@/components/ui/navbar";
+import { Footer } from "@/components/ui/footer";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import Link from "next/link";
-import { ArrowRight, Sparkles, Image as ImageIcon, Zap } from "lucide-react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { AnimatedBorderText } from "@/components/ui/animated-border-text";
+import { Sparkles, Zap, Palette, Image as ImageIcon } from "lucide-react";
+import { motion } from "framer-motion";
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-      {/* Navigation */}
-      <nav className="border-b border-slate-700 backdrop-blur-sm bg-slate-900/50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-8 h-8 text-amber-400" />
-            <span className="text-2xl font-bold text-white">Tasty Banana</span>
-          </div>
-          <div className="flex gap-4">
-            <Link href="/login">
-              <Button variant="ghost" className="text-white hover:bg-slate-700">
-                Login
-              </Button>
-            </Link>
-            <Link href="/signup">
-              <Button className="bg-amber-500 hover:bg-amber-600 text-white">
-                Sign Up
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </nav>
-
-      {/* Hero Section */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
-        <div className="text-center space-y-8">
-          <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/30 w-fit mx-auto">
-            <Sparkles className="w-3 h-3 mr-1" />
-            AI-Powered Image Generation
-          </Badge>
-
-          <div>
-            <h1 className="text-5xl sm:text-6xl font-bold text-white mb-6 tracking-tight">
-              Generate Stunning Images
-              <br />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-400">
-                With AI Magic
-              </span>
-            </h1>
-            <p className="text-xl text-slate-300 max-w-3xl mx-auto leading-relaxed">
-              Create beautiful, unique images instantly. Just describe what you
-              want and let our AI bring your imagination to life. Perfect for
-              creators, designers, and dreamers.
-            </p>
-          </div>
-
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link href="/auth/signup">
-              <Button size="lg" className="bg-amber-500 hover:bg-amber-600 text-white text-lg px-8 py-6">
-                Get Started Free
-                <ArrowRight className="w-5 h-5 ml-2" />
-              </Button>
-            </Link>
-            <Button
-              size="lg"
-              variant="outline"
-              className="text-white border-slate-600 hover:bg-slate-700"
+    <>
+      <Background3D />
+      <Navbar />
+      
+      <main className="pt-16">
+        <section className="relative min-h-screen flex items-center justify-center px-6">
+          <div className="max-w-4xl mx-auto text-center space-y-8">
+            <motion.div 
+              className="inline-block"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, ease: "easeOut" }}
             >
-              View Examples
-            </Button>
+              <span className="inline-flex items-center gap-2 px-4 py-2 rounded-pill bg-primary/10 border border-primary/20 text-sm font-medium text-primary mb-6">
+                <Sparkles className="w-4 h-4" />
+                Powered by AI Magic
+              </span>
+            </motion.div>
+            
+            <div>
+              <motion.h1 
+                className="text-5xl md:text-7xl font-heading font-extrabold leading-tight tracking-tight"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.8, delay: 0.2, ease: "easeOut" }}
+              >
+                Create Stunning Images
+              </motion.h1>
+              
+              <AnimatedBorderText>
+                With AI Power
+              </AnimatedBorderText>
+            </div>
+            
+            <motion.p 
+              className="text-lg md:text-xl text-text-dim max-w-2xl mx-auto"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.8, delay: 0.6, ease: "easeOut" }}
+            >
+              Transform your ideas into beautiful visuals in seconds. Tasty Banana brings AI-powered creativity to your fingertips.
+            </motion.p>
+
+            <motion.div 
+              className="flex flex-col sm:flex-row gap-4 items-center justify-center pt-4"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.8, delay: 0.8, ease: "easeOut" }}
+            >
+              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                <Button size="lg">
+                  Start Creating Free
+                </Button>
+              </motion.div>
+              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                <Button variant="secondary" size="lg">
+                  View Examples
+                </Button>
+              </motion.div>
+            </motion.div>
+
+            <motion.div 
+              className="flex items-center justify-center gap-2 pt-8 text-sm text-text-dim"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.8, delay: 1, ease: "easeOut" }}
+            >
+              <span>✨</span>
+              <span>No credit card required</span>
+              <span>•</span>
+              <span>100+ images generated daily</span>
+            </motion.div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* Features Section */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 bg-gradient-to-b from-transparent to-slate-800/50">
-        <div className="grid md:grid-cols-3 gap-8">
-          <Card className="bg-slate-800/50 border-slate-700 p-8 hover:border-amber-500/50 transition-colors">
-            <div className="bg-amber-500/10 w-12 h-12 rounded-lg flex items-center justify-center mb-4">
-              <ImageIcon className="w-6 h-6 text-amber-400" />
+        <section className="py-24 px-6">
+          <div className="max-w-7xl mx-auto">
+            <motion.div 
+              className="text-center mb-16"
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, amount: 0.3 }}
+              transition={{ duration: 0.8, ease: "easeOut" }}
+            >
+              <h2 className="text-3xl md:text-5xl font-heading font-bold mb-4">
+                Powerful Features
+              </h2>
+              <p className="text-text-dim text-lg">
+                Everything you need to bring your imagination to life
+              </p>
+            </motion.div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <motion.div
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, amount: 0.3 }}
+                transition={{ duration: 0.6, delay: 0.1 }}
+                whileHover={{ y: -8 }}
+              >
+                <Card>
+                  <CardHeader>
+                    <div className="w-12 h-12 rounded-[10px] bg-accent-mint/10 flex items-center justify-center mb-4">
+                      <Zap className="w-6 h-6 text-accent-mint" />
+                    </div>
+                    <CardTitle>Lightning Fast</CardTitle>
+                    <CardDescription>
+                      Generate high-quality images in seconds, not minutes
+                    </CardDescription>
+                  </CardHeader>
+                </Card>
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, amount: 0.3 }}
+                transition={{ duration: 0.6, delay: 0.2 }}
+                whileHover={{ y: -8 }}
+              >
+                <Card>
+                  <CardHeader>
+                    <div className="w-12 h-12 rounded-[10px] bg-accent-sky/10 flex items-center justify-center mb-4">
+                      <Palette className="w-6 h-6 text-accent-sky" />
+                    </div>
+                    <CardTitle>Style Control</CardTitle>
+                    <CardDescription>
+                      Fine-tune every aspect with advanced style parameters
+                    </CardDescription>
+                  </CardHeader>
+                </Card>
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, amount: 0.3 }}
+                transition={{ duration: 0.6, delay: 0.3 }}
+                whileHover={{ y: -8 }}
+              >
+                <Card>
+                  <CardHeader>
+                    <div className="w-12 h-12 rounded-[10px] bg-accent-orchid/10 flex items-center justify-center mb-4">
+                      <ImageIcon className="w-6 h-6 text-accent-orchid" />
+                    </div>
+                    <CardTitle>HD Quality</CardTitle>
+                    <CardDescription>
+                      Export in multiple resolutions up to 4K quality
+                    </CardDescription>
+                  </CardHeader>
+                </Card>
+              </motion.div>
             </div>
-            <h3 className="text-xl font-semibold text-white mb-3">
-              Instant Generation
-            </h3>
-            <p className="text-slate-400">
-              Generate high-quality images in seconds. No complicated workflows,
-              just pure creativity.
-            </p>
-          </Card>
+          </div>
+        </section>
 
-          <Card className="bg-slate-800/50 border-slate-700 p-8 hover:border-amber-500/50 transition-colors">
-            <div className="bg-amber-500/10 w-12 h-12 rounded-lg flex items-center justify-center mb-4">
-              <Zap className="w-6 h-6 text-amber-400" />
-            </div>
-            <h3 className="text-xl font-semibold text-white mb-3">
-              Powerful AI
-            </h3>
-            <p className="text-slate-400">
-              Powered by cutting-edge AI models. From photorealistic to artistic,
-              your style your way.
-            </p>
-          </Card>
+        <section className="py-24 px-6 relative overflow-hidden">
+          <motion.div 
+            className="absolute inset-0 bg-gradient-radial from-primary/5 via-transparent to-transparent"
+            initial={{ opacity: 0 }}
+            whileInView={{ opacity: 1 }}
+            viewport={{ once: true }}
+            transition={{ duration: 1 }}
+          />
+          
+          <div className="max-w-3xl mx-auto text-center space-y-8 relative">
+            <motion.h2 
+              className="text-3xl md:text-5xl font-heading font-bold"
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, amount: 0.3 }}
+              transition={{ duration: 0.8, ease: "easeOut" }}
+            >
+              Ready to Create Magic?
+            </motion.h2>
+            <motion.p 
+              className="text-text-dim text-lg"
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, amount: 0.3 }}
+              transition={{ duration: 0.8, delay: 0.2, ease: "easeOut" }}
+            >
+              Join thousands of creators using Tasty Banana to bring their ideas to life
+            </motion.p>
 
-          <Card className="bg-slate-800/50 border-slate-700 p-8 hover:border-amber-500/50 transition-colors">
-            <div className="bg-amber-500/10 w-12 h-12 rounded-lg flex items-center justify-center mb-4">
-              <Sparkles className="w-6 h-6 text-amber-400" />
-            </div>
-            <h3 className="text-xl font-semibold text-white mb-3">
-              Easy to Use
-            </h3>
-            <p className="text-slate-400">
-              Simple, intuitive interface. Perfect for beginners and professionals
-              alike.
-            </p>
-          </Card>
-        </div>
-      </section>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              whileInView={{ opacity: 1, scale: 1 }}
+              viewport={{ once: true, amount: 0.3 }}
+              transition={{ duration: 0.8, delay: 0.4, ease: "easeOut" }}
+            >
+              <Card className="shadow-glow">
+                <CardContent className="pt-6">
+                  <form className="flex flex-col sm:flex-row gap-4">
+                    <Input 
+                      type="email" 
+                      placeholder="Enter your email" 
+                      className="flex-1"
+                    />
+                    <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                      <Button type="submit" className="sm:w-auto">
+                        Get Started
+                      </Button>
+                    </motion.div>
+                  </form>
+                  <p className="text-xs text-text-dim mt-4">
+                    Start free trial. Cancel anytime. No credit card required.
+                  </p>
+                </CardContent>
+              </Card>
+            </motion.div>
+          </div>
+        </section>
+      </main>
 
-      {/* CTA Section */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
-        <Card className="bg-gradient-to-r from-amber-500/20 to-orange-500/20 border-amber-500/30 p-12 text-center">
-          <h2 className="text-3xl font-bold text-white mb-4">
-            Ready to create?
-          </h2>
-          <p className="text-slate-300 mb-8">
-            Join thousands of creators and generate your first image today.
-          </p>
-          <Link href="/auth/signup">
-            <Button size="lg" className="bg-amber-500 hover:bg-amber-600 text-white">
-              Start Creating Now
-              <ArrowRight className="w-5 h-5 ml-2" />
-            </Button>
-          </Link>
-        </Card>
-      </section>
-
-      {/* Footer */}
-      <footer className="border-t border-slate-700 bg-slate-900/50 mt-24">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 text-center text-slate-400">
-          <p>&copy; 2024 Tasty Banana. All rights reserved.</p>
-        </div>
-      </footer>
-    </div>
+      <Footer />
+    </>
   );
 }
