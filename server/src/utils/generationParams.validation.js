@@ -6,16 +6,15 @@ import { IMAGE_GENERATION_CONSTRAINTS } from "./constant.js";
 /**
  * Allowed user-customizable generation parameter keys
  */
-const ALLOWED_PARAMS = ["numberOfImages", "aspectRatio", "addWatermark", "seed"];
+const ALLOWED_PARAMS = ["numberOfImages", "aspectRatio", "seed"];
 
 /**
  * Validate generation parameters from user request
- * Only validates user-customizable parameters: numberOfImages, aspectRatio, addWatermark, seed
+ * Only validates user-customizable parameters: numberOfImages, aspectRatio, seed
  * 
  * @param {Object} params - Generation parameters to validate
  * @param {number} [params.numberOfImages] - Number of images (1-8)
  * @param {string} [params.aspectRatio] - Aspect ratio ("1:1" | "9:16" | "16:9" | "4:3" | "3:4")
- * @param {boolean} [params.addWatermark] - Whether to add watermark
  * @param {number} [params.seed] - Optional seed for reproducibility
  * 
  * @returns {Object} Validation result with:
@@ -27,7 +26,6 @@ const ALLOWED_PARAMS = ["numberOfImages", "aspectRatio", "addWatermark", "seed"]
  * const result = validateGenerationParams({
  *   numberOfImages: 2,
  *   aspectRatio: "16:9",
- *   addWatermark: false,
  *   seed: 12345
  * });
  * // result = { isValid: true, errors: [], sanitized: { numberOfImages: 2, ... } }
@@ -87,17 +85,6 @@ export const validateGenerationParams = (params) => {
       );
     } else {
       sanitized.aspectRatio = aspectRatio;
-    }
-  }
-
-  // Validate addWatermark
-  if (!isNil(params.addWatermark)) {
-    const { addWatermark } = params;
-    
-    if (!isBoolean(addWatermark)) {
-      errors.push("addWatermark must be a boolean");
-    } else {
-      sanitized.addWatermark = addWatermark;
     }
   }
 

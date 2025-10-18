@@ -662,7 +662,6 @@ export const storeJobImages = async (jobId, generationResult, generationParams =
   const userParams = {
     numberOfImages: get(generationParams, "numberOfImages"),
     aspectRatio: get(generationParams, "aspectRatio"),
-    addWatermark: get(generationParams, "addWatermark"),
   };
   
   const seed = get(generationParams, "seed");
@@ -1088,7 +1087,6 @@ export const processJob = async (jobId, threadId) => {
       numberOfImages: get(parameters, "numberOfImages", 1),
       aspectRatio: get(parameters, "aspectRatio", "1:1"),
       seed: get(parameters, "seed"),
-      addWatermark: get(parameters, "addWatermark", true),
     };
 
     console.log(

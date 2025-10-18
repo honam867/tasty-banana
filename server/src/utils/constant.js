@@ -133,7 +133,6 @@ export const IMAGE_GENERATION_DEFAULTS = {
   // User-customizable parameters
   numberOfImages: 1,
   aspectRatio: "1:1",
-  addWatermark: true,
   seed: null,
   
   // Fixed defaults (not user-customizable)

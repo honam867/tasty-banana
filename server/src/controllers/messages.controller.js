@@ -16,7 +16,6 @@ import { validateGenerationParams } from "../utils/generationParams.validation.j
  * Request body accepts optional generationParams:
  * - numberOfImages: 1-8 (default: 1)
  * - aspectRatio: "1:1" | "9:16" | "16:9" | "4:3" | "3:4" (default: "1:1")
- * - addWatermark: boolean (default: true)
  * - seed: number (optional)
  * 
  * Note: personGeneration and enablePromptRewriting are fixed defaults and not accepted from requests
