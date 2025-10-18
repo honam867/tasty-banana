@@ -2,7 +2,7 @@ import lodash from "lodash";
 const { get, isNil, isEmpty } = lodash;
 
 import { createMessage, findMessagesByThreadIdWithPagination } from "../services/messages.service.js";
-import { isThreadOwnedByUser } from "../services/threads.service.js";
+import { isThreadOwnedByUser, findThreadById, updateThreadName } from "../services/threads.service.js";
 import { getDefaultProvider } from "../services/providers.service.js";
 import { createJob, processJob } from "../services/jobs.service.js";
 import { HTTP_STATUS, JOB_TYPE, IMAGE_GENERATION_DEFAULTS } from "../utils/constant.js";
@@ -102,6 +102,14 @@ export const createThreadMessage = async (req, res) => {
         status: 500,
         message: "Failed to create message",
       });
+    }
+
+    // 6.1. Auto-populate thread name from first message if not set
+    const thread = await findThreadById(threadId);
+    if (thread && isNil(thread.name)) {
+      // Set thread name to the message content (truncate if too long)
+      const threadName = content.length > 100 ? content.substring(0, 100) + "..." : content;
+      await updateThreadName(threadId, threadName);
     }
 
     // 7. Fetch the default provider (Gemini)

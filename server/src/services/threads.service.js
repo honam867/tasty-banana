@@ -110,6 +110,25 @@ export const isThreadOwnedByUser = async (threadId, ownerId) => {
 };
 
 /**
+ * Update thread name
+ * @param {string} threadId - Thread ID
+ * @param {string} name - Thread name
+ * @returns {Promise<Object|null>} Updated thread object or null
+ */
+export const updateThreadName = async (threadId, name) => {
+  const result = await db
+    .update(threads)
+    .set({ 
+      name,
+      updatedAt: new Date(),
+    })
+    .where(eq(threads.id, threadId))
+    .returning();
+  
+  return get(result, "[0]", null);
+};
+
+/**
  * Delete a thread
  * @param {string} threadId - Thread ID
  * @returns {Promise<Object|null>} Deleted thread object or null

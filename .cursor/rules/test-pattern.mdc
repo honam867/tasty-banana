@@ -1,9 +1,7 @@
 ---
-description: Simple E2E testing pattern for API routes with test account authentication
 globs: server/tests/**/*.spec.js
-alwaysApply: true
+alwaysApply: false
 ---
-
 # E2E Route Testing Pattern
 
 ## Test Account Authentication

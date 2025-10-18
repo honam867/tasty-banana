@@ -1,6 +1,6 @@
 import express from "express";
 import { verifyToken } from "../middlewares/tokenHandler.js";
-import { createNewThread, listThreads, getThread } from "../controllers/threads.controller.js";
+import { createNewThread, listThreads, getThread, deleteThreadById } from "../controllers/threads.controller.js";
 import { createThreadMessage, listThreadMessages } from "../controllers/messages.controller.js";
 import { ROUTES } from "../utils/routes.js";
 
@@ -18,21 +18,8 @@ router.get("/", listThreads);
 // GET /api/threads/:threadId - Get a specific thread
 router.get("/:threadId", getThread);
 
-// PUT /api/threads/:threadId - Update a thread
-router.put("/:threadId", (req, res) => {
-  res.status(404).json({ 
-    success: false, 
-    message: "Endpoint not implemented yet" 
-  });
-});
-
 // DELETE /api/threads/:threadId - Delete a thread
-router.delete("/:threadId", (req, res) => {
-  res.status(404).json({ 
-    success: false, 
-    message: "Endpoint not implemented yet" 
-  });
-});
+router.delete("/:threadId", deleteThreadById);
 
 // POST /api/threads/:threadId/messages - Create a new message in a thread
 router.post(ROUTES.THREAD_MESSAGES, createThreadMessage);
