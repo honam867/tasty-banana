@@ -536,6 +536,7 @@ export const storeGeneratedImage = async ({
     console.log(`   Storage key: ${storageKey}`);
 
     // Upload to R2 with timeout and retry
+    // Note: Only pass flat string metadata to R2, not nested objects
     const uploadResult = await withTimeout(
       async () => {
         return await withRetry(
@@ -547,7 +548,6 @@ export const storeGeneratedImage = async ({
               metadata: {
                 jobId,
                 index: String(index),
-                ...metadata,
               },
             });
           },
@@ -636,10 +636,11 @@ export const storeGeneratedImage = async ({
  * Store all generated images from a job result
  * @param {string} jobId - Job UUID
  * @param {Object} generationResult - Result from generateImage
+ * @param {Object} generationParams - Generation parameters used (for metadata)
  * @returns {Promise<Array>} Array of created image records
  * @throws {Error} If any image storage fails
  */
-export const storeJobImages = async (jobId, generationResult) => {
+export const storeJobImages = async (jobId, generationResult, generationParams = {}) => {
   if (isNil(jobId) || isEmpty(jobId)) {
     throw new Error("jobId is required");
   }
@@ -656,6 +657,19 @@ export const storeJobImages = async (jobId, generationResult) => {
 
   console.log(`📦 Storing ${imagesList.length} generated images...`);
 
+  // Extract only user-customizable parameters for metadata
+  // Omit seed if null/undefined
+  const userParams = {
+    numberOfImages: get(generationParams, "numberOfImages"),
+    aspectRatio: get(generationParams, "aspectRatio"),
+    addWatermark: get(generationParams, "addWatermark"),
+  };
+  
+  const seed = get(generationParams, "seed");
+  if (!isNil(seed)) {
+    userParams.seed = seed;
+  }
+
   const storedImages = [];
   const errors = [];
 
@@ -671,7 +685,9 @@ export const storeJobImages = async (jobId, generationResult) => {
         imageData,
         mimeType,
         index,
-        metadata: {},
+        metadata: {
+          generationParams: userParams,
+        },
       });
 
       storedImages.push(storedImage);
@@ -744,6 +760,59 @@ export const getImagesByJobId = async (jobId) => {
     // Wrap database errors
     throw new JobError(
       `Failed to fetch images: ${get(error, "message")}`,
+      JOB_ERROR_CODE.DATABASE_ERROR,
+      500,
+      { jobId, originalError: get(error, "message") }
+    );
+  }
+};
+
+/**
+ * Get a job by ID with its images
+ * @param {string} jobId - UUID of the job
+ * @returns {Promise<Object|null>} Job object with images array or null if not found
+ * @throws {JobError} If validation fails or database operation fails
+ */
+export const getJobWithImages = async (jobId) => {
+  if (isNil(jobId) || isEmpty(jobId)) {
+    throw new JobError(
+      "jobId is required",
+      JOB_ERROR_CODE.MISSING_REQUIRED_FIELD,
+      400,
+      { field: "jobId" }
+    );
+  }
+
+  try {
+    // Get job
+    const job = await getJobById(jobId);
+
+    if (isNil(job)) {
+      return null;
+    }
+
+    // Get images for this job
+    const imagesList = await getImagesByJobId(jobId);
+
+    // Return job with images
+    return {
+      ...job,
+      images: imagesList,
+    };
+  } catch (error) {
+    console.error(
+      `❌ Error fetching job with images ${jobId}:`,
+      get(error, "message")
+    );
+
+    // If it's already a JobError, re-throw it
+    if (error instanceof JobError) {
+      throw error;
+    }
+
+    // Wrap other errors
+    throw new JobError(
+      `Failed to fetch job with images: ${get(error, "message")}`,
       JOB_ERROR_CODE.DATABASE_ERROR,
       500,
       { jobId, originalError: get(error, "message") }
@@ -1055,7 +1124,7 @@ export const processJob = async (jobId, threadId) => {
 
       // 5. Store generated images to R2 and create image records
       try {
-        storedImages = await storeJobImages(jobId, generationResult);
+        storedImages = await storeJobImages(jobId, generationResult, generationParams);
         console.log(`✅ Stored ${storedImages.length} images successfully`);
       } catch (storageError) {
         // Storage failed - mark job as failed and throw
@@ -1290,6 +1359,7 @@ export default {
   createJob,
   updateJobStatus,
   getJobById,
+  getJobWithImages,
   getJobsByThread,
   getImagesByJobId,
   storeGeneratedImage,

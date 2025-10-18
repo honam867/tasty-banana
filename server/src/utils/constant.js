@@ -127,3 +127,26 @@ export const randomPassword = (length) => {
 
   return result;
 };
+
+// Image generation default parameters
+export const IMAGE_GENERATION_DEFAULTS = {
+  // User-customizable parameters
+  numberOfImages: 1,
+  aspectRatio: "1:1",
+  addWatermark: true,
+  seed: null,
+  
+  // Fixed defaults (not user-customizable)
+  personGeneration: "allow_all",
+  enablePromptRewriting: true,
+};
+
+// Valid values for image generation parameters
+export const IMAGE_GENERATION_CONSTRAINTS = {
+  numberOfImages: {
+    min: 1,
+    max: 8,
+  },
+  aspectRatios: ["1:1", "9:16", "16:9", "4:3", "3:4"],
+  personGeneration: ["dont_allow", "allow_adult", "allow_all"],
+};

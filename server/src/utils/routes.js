@@ -12,4 +12,7 @@ export const ROUTES = {
   //Threads
   THREADS: "/threads",
   THREAD_MESSAGES: "/:threadId/messages",
+  
+  //Jobs
+  JOBS: "/jobs",
 };

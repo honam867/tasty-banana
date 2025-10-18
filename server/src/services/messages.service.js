@@ -3,7 +3,7 @@ const { get, isNil } = lodash;
 
 import { eq, and, desc, lt } from "drizzle-orm";
 import { db } from "../db/drizzle.js";
-import { messages } from "../db/schema.js";
+import { messages, jobs } from "../db/schema.js";
 
 /**
  * Create a new message in a thread
@@ -90,6 +90,7 @@ export const updateMessage = async (messageId, updates) => {
 
 /**
  * Find messages in a thread with cursor-based pagination
+ * Includes related job data for each message (simple join)
  * @param {string} threadId - Thread ID
  * @param {number} limit - Number of messages to return (default 50, max 50)
  * @param {string|null} cursor - Cursor for pagination (ISO timestamp)
@@ -108,16 +109,43 @@ export const findMessagesByThreadIdWithPagination = async (threadId, limit = 50,
   }
   
   // Fetch one extra item to determine if there's a next page
-  const result = await db
-    .select()
+  const rawResults = await db
+    .select({
+      // Message fields
+      id: messages.id,
+      threadId: messages.threadId,
+      role: messages.role,
+      content: messages.content,
+      status: messages.status,
+      createdAt: messages.createdAt,
+      updatedAt: messages.updatedAt,
+      // Job fields (only status and parameters)
+      jobStatus: jobs.status,
+      jobParameters: jobs.parameters,
+    })
     .from(messages)
+    .leftJoin(jobs, eq(messages.id, jobs.messageId))
     .where(conditions)
     .orderBy(desc(messages.createdAt))
     .limit(effectiveLimit + 1);
   
+  // Format results: nest job data within message
+  const items = rawResults.slice(0, effectiveLimit).map((row) => ({
+    id: row.id,
+    threadId: row.threadId,
+    role: row.role,
+    content: row.content,
+    status: row.status,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    job: row.jobStatus ? {
+      status: row.jobStatus,
+      parameters: row.jobParameters,
+    } : null,
+  }));
+  
   // Determine if there's a next page
-  const hasMore = result.length > effectiveLimit;
-  const items = hasMore ? result.slice(0, effectiveLimit) : result;
+  const hasMore = rawResults.length > effectiveLimit;
   
   // Get the next cursor from the last item if there are more items
   const nextCursor = hasMore && items.length > 0 
