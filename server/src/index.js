@@ -9,6 +9,7 @@ import { createServer } from "http";
 import db from "./config/db/index.js";
 import route from "./routes/index.js";
 import { initializeSocket } from "./config/socket.js";
+import { recoverStuckJobs } from "./services/startup.service.js";
 
 import { fileURLToPath } from "url";
 import { dirname } from "path";
@@ -25,6 +26,12 @@ const httpServer = createServer(app);
 initializeSocket(httpServer);
 
 db.connect();
+
+// Recover any jobs/messages stuck in "processing" from previous server instance
+recoverStuckJobs().catch(error => {
+  console.error("❌ Failed to recover stuck jobs on startup:", error.message);
+});
+
 app.use(express.static(path.join(__dirname, "public")));
 app.use(cors());
 app.use(express.json());
