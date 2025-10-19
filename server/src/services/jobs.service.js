@@ -11,102 +11,15 @@ import {
   TERMINAL_JOB_STATUSES,
   JOB_ERROR_CODE,
   JOB_TIMEOUT,
-  JOB_RETRY_CONFIG,
+  MESSAGE_ROLE,
+  MESSAGE_STATUS,
 } from "../utils/constant.js";
 import JobError from "../utils/JobError.js";
+import { withRetry, withTimeout } from "../utils/functions.js";
 import { generateImage } from "./gemini.service.js";
 import { uploadToR2, getR2Bucket } from "../config/r2.js";
-import {
-  updateMessage,
-  createMessage,
-} from "./messages.service.js";
+import { updateMessage, createMessage } from "./messages.service.js";
 import { ulid } from "ulid";
-
-/**
- * Sleep utility for retry delays
- * @param {number} ms - Milliseconds to sleep
- * @returns {Promise<void>}
- */
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-/**
- * Execute operation with exponential backoff retry logic
- * @param {Function} operation - Async function to execute
- * @param {Object} options - Retry configuration
- * @returns {Promise<any>} Operation result
- * @throws {Error} If all retries fail
- */
-const withRetry = async (operation, options = {}) => {
-  const {
-    maxRetries = JOB_RETRY_CONFIG.MAX_RETRIES,
-    initialDelay = JOB_RETRY_CONFIG.INITIAL_DELAY,
-    maxDelay = JOB_RETRY_CONFIG.MAX_DELAY,
-    backoffMultiplier = JOB_RETRY_CONFIG.BACKOFF_MULTIPLIER,
-    retryableErrors = ["ECONNRESET", "ETIMEDOUT", "ENOTFOUND"],
-  } = options;
-
-  let lastError;
-  let delay = initialDelay;
-
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      return await operation();
-    } catch (error) {
-      lastError = error;
-      const errorCode = get(error, "code", "");
-      const isRetryable = retryableErrors.some((code) =>
-        errorCode.includes(code)
-      );
-
-      if (attempt === maxRetries || !isRetryable) {
-        throw error;
-      }
-
-      console.warn(
-        `⚠️ Attempt ${attempt}/${maxRetries} failed: ${get(
-          error,
-          "message"
-        )}. Retrying in ${delay}ms...`
-      );
-
-      await sleep(delay);
-      delay = Math.min(delay * backoffMultiplier, maxDelay);
-    }
-  }
-
-  throw lastError;
-};
-
-/**
- * Execute operation with timeout
- * @param {Function} operation - Async function to execute
- * @param {number} timeoutMs - Timeout in milliseconds
- * @param {string} operationName - Name for error messages
- * @returns {Promise<any>} Operation result
- * @throws {JobError} If timeout occurs
- */
-const withTimeout = async (
-  operation,
-  timeoutMs,
-  operationName = "Operation"
-) => {
-  return Promise.race([
-    operation(),
-    new Promise((_, reject) =>
-      setTimeout(
-        () =>
-          reject(
-            new JobError(
-              `${operationName} timed out after ${timeoutMs}ms`,
-              JOB_ERROR_CODE.TIMEOUT,
-              504
-            )
-          ),
-        timeoutMs
-      )
-    ),
-  ]);
-};
 
 /**
  * Delete orphaned images from R2 storage
@@ -640,7 +553,11 @@ export const storeGeneratedImage = async ({
  * @returns {Promise<Array>} Array of created image records
  * @throws {Error} If any image storage fails
  */
-export const storeJobImages = async (jobId, generationResult, generationParams = {}) => {
+export const storeJobImages = async (
+  jobId,
+  generationResult,
+  generationParams = {}
+) => {
   if (isNil(jobId) || isEmpty(jobId)) {
     throw new Error("jobId is required");
   }
@@ -663,7 +580,7 @@ export const storeJobImages = async (jobId, generationResult, generationParams =
     numberOfImages: get(generationParams, "numberOfImages"),
     aspectRatio: get(generationParams, "aspectRatio"),
   };
-  
+
   const seed = get(generationParams, "seed");
   if (!isNil(seed)) {
     userParams.seed = seed;
@@ -888,9 +805,9 @@ export const createAssistantMessageWithJobResult = async (
 
       const assistantMessage = await createMessage(
         threadId,
-        "assistant",
+        MESSAGE_ROLE.ASSISTANT,
         messageContent,
-        "succeeded"
+        MESSAGE_STATUS.SUCCEEDED
       );
 
       console.log(
@@ -908,9 +825,9 @@ export const createAssistantMessageWithJobResult = async (
 
       const assistantMessage = await createMessage(
         threadId,
-        "assistant",
+        MESSAGE_ROLE.ASSISTANT,
         messageContent,
-        "failed"
+        MESSAGE_STATUS.FAILED
       );
 
       console.log(`✅ Assistant message created with error details`);
@@ -1057,7 +974,7 @@ export const processJob = async (jobId, threadId) => {
 
     // 3. Update user message status to 'processing'
     try {
-      await updateMessage(messageId, { status: "processing" });
+      await updateMessage(messageId, { status: MESSAGE_STATUS.PROCESSING });
       console.log(
         `✅ User message ${messageId} status updated to 'processing'`
       );
@@ -1122,7 +1039,11 @@ export const processJob = async (jobId, threadId) => {
 
       // 5. Store generated images to R2 and create image records
       try {
-        storedImages = await storeJobImages(jobId, generationResult, generationParams);
+        storedImages = await storeJobImages(
+          jobId,
+          generationResult,
+          generationParams
+        );
         console.log(`✅ Stored ${storedImages.length} images successfully`);
       } catch (storageError) {
         // Storage failed - mark job as failed and throw
@@ -1157,7 +1078,7 @@ export const processJob = async (jobId, threadId) => {
 
         // Update user message status to 'failed'
         try {
-          await updateMessage(messageId, { status: "failed" });
+          await updateMessage(messageId, { status: MESSAGE_STATUS.FAILED });
           console.log(
             `✅ User message ${messageId} status updated to 'failed' (storage error)`
           );
@@ -1197,7 +1118,7 @@ export const processJob = async (jobId, threadId) => {
 
       // 7. Update user message status to 'succeeded'
       try {
-        await updateMessage(messageId, { status: "succeeded" });
+        await updateMessage(messageId, { status: MESSAGE_STATUS.SUCCEEDED });
         console.log(
           `✅ User message ${messageId} status updated to 'succeeded'`
         );
@@ -1268,7 +1189,7 @@ export const processJob = async (jobId, threadId) => {
 
       // Update user message status to 'failed'
       try {
-        await updateMessage(messageId, { status: "failed" });
+        await updateMessage(messageId, { status: MESSAGE_STATUS.FAILED });
         console.log(`✅ User message ${messageId} status updated to 'failed'`);
       } catch (messageUpdateError) {
         console.error(

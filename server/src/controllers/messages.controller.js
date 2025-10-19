@@ -5,7 +5,7 @@ import { createMessage, findMessagesByThreadIdWithPagination } from "../services
 import { isThreadOwnedByUser, findThreadById, updateThreadName } from "../services/threads.service.js";
 import { getDefaultProvider } from "../services/providers.service.js";
 import { createJob, processJob } from "../services/jobs.service.js";
-import { HTTP_STATUS, JOB_TYPE, IMAGE_GENERATION_DEFAULTS } from "../utils/constant.js";
+import { HTTP_STATUS, JOB_TYPE, IMAGE_GENERATION_DEFAULTS, MESSAGE_ROLE } from "../utils/constant.js";
 import { sendError, sendWarning } from "../utils/response.js";
 import { validateGenerationParams } from "../utils/generationParams.validation.js";
 
@@ -59,7 +59,7 @@ export const createThreadMessage = async (req, res) => {
     }
 
     // 3. Validate role - must be 'user'
-    if (role !== "user") {
+    if (role !== MESSAGE_ROLE.USER) {
       return sendWarning(res, "Message role must be 'user'");
     }
 

@@ -4,6 +4,7 @@ const { get, isNil } = lodash;
 import { eq, and, desc, lt, inArray } from "drizzle-orm";
 import { db } from "../db/drizzle.js";
 import { messages, jobs, images } from "../db/schema.js";
+import { MESSAGE_ROLE, MESSAGE_STATUS } from "../utils/constant.js";
 
 /**
  * Create a new message in a thread
@@ -13,7 +14,7 @@ import { messages, jobs, images } from "../db/schema.js";
  * @param {string} status - Message status (default: pending)
  * @returns {Promise<Object>} Created message object
  */
-export const createMessage = async (threadId, role, content, status = "pending") => {
+export const createMessage = async (threadId, role, content, status = MESSAGE_STATUS.PENDING) => {
   const result = await db
     .insert(messages)
     .values({
@@ -144,7 +145,7 @@ export const findMessagesByThreadIdWithPagination = async (threadId, limit = 50,
   // Extract job IDs from user messages
   // Jobs are linked to user messages, assistant messages reference them implicitly
   const jobIds = currentPageMessages
-    .filter(msg => msg.role === "user" && msg.jobId)
+    .filter(msg => msg.role === MESSAGE_ROLE.USER && msg.jobId)
     .map(msg => msg.jobId);
   
   // Fetch all images for these jobs in one query
@@ -194,12 +195,12 @@ export const findMessagesByThreadIdWithPagination = async (threadId, limit = 50,
     
     // Only attach images to assistant messages
     // Find the corresponding user message's job (the one that triggered this assistant response)
-    if (row.role === "assistant") {
+    if (row.role === MESSAGE_ROLE.ASSISTANT) {
       // Look for the immediately preceding user message with a job
       // Since messages are DESC by createdAt, we look forward in the array (older messages)
       for (let i = index + 1; i < currentPageMessages.length; i++) {
         const olderMsg = currentPageMessages[i];
-        if (olderMsg.role === "user" && olderMsg.jobId) {
+        if (olderMsg.role === MESSAGE_ROLE.USER && olderMsg.jobId) {
           // Found the user message that triggered this assistant response
           const jobId = olderMsg.jobId;
           if (imagesByJobId.has(jobId)) {

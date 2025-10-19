@@ -149,3 +149,18 @@ export const IMAGE_GENERATION_CONSTRAINTS = {
   aspectRatios: ["1:1", "9:16", "16:9", "4:3", "3:4"],
   personGeneration: ["dont_allow", "allow_adult", "allow_all"],
 };
+
+// Message roles
+export const MESSAGE_ROLE = {
+  USER: "user",
+  ASSISTANT: "assistant",
+  SYSTEM: "system",
+};
+
+// Message statuses
+export const MESSAGE_STATUS = {
+  PENDING: "pending",
+  PROCESSING: "processing",
+  SUCCEEDED: "succeeded",
+  FAILED: "failed",
+};
