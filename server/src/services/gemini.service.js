@@ -26,12 +26,6 @@ export const initGeminiClient = async () => {
     // Validate configuration
     const config = getGeminiConfiguration();
 
-    if (isEmpty(config.credentialsPath)) {
-      throw new Error(
-        "GOOGLE_APPLICATION_CREDENTIALS is required for Gemini client initialization"
-      );
-    }
-
     if (isEmpty(config.projectId)) {
       throw new Error(
         "GOOGLE_CLOUD_PROJECT is required for Gemini client initialization"
@@ -45,7 +39,7 @@ export const initGeminiClient = async () => {
     // Initialize prediction client with config
     const client = new PredictionServiceClient({
       apiEndpoint: config.endpoint,
-      keyFilename: config.credentialsPath,
+      auth,
     });
 
     console.log(`✅ Gemini client initialized successfully`);
