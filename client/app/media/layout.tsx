@@ -45,14 +45,14 @@ export default function MediaLayout({
   }
 
   return (
-    <div className="h-screen flex">
+    <div className="flex overflow-hidden" style={{ height: "100dvh", touchAction: "pan-y" }}>
       <MediaSidebar
         isCollapsed={isSidebarCollapsed}
         setIsCollapsed={setIsSidebarCollapsed}
       />
       <main
         className={cn(
-          "flex-1 transition-all duration-300",
+          "flex-1 transition-all duration-300 overflow-hidden",
           isSidebarCollapsed ? "ml-0 md:ml-16" : "ml-0 md:ml-64"
         )}
       >

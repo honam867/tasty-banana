@@ -55,15 +55,15 @@ export function AnimatedInput({
           placeholder={placeholder}
           rows={1}
           className={cn(
-            "w-full px-4 py-3 pr-12 bg-surface-2 border-2 rounded-xl resize-none",
+            " w-full px-4 pr-12 bg-surface-2 border-2 rounded-xl resize-none",
             "focus:outline-none transition-all duration-300",
-            "placeholder:text-text-dim",
+            "placeholder:text-text-dim text-sm md:text-base",
             disabled && "opacity-50 cursor-not-allowed",
             isFocused
               ? "border-primary"
               : "border-transparent"
           )}
-          style={{ minHeight: "48px", maxHeight: "120px" }}
+          style={{ height: "48px", lineHeight: "48px", paddingTop: 0, paddingBottom: 0, maxHeight: "120px" }}
         />
         <button
           onClick={onSubmit}

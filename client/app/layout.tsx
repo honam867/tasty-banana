@@ -20,6 +20,12 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "Tasty Banana - AI Image Generation",
   description: "Generate stunning images with AI-powered image generation",
+  viewport: {
+    width: "device-width",
+    initialScale: 1,
+    maximumScale: 1,
+    userScalable: false,
+  },
 };
 
 export default function RootLayout({

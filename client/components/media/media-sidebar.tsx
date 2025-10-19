@@ -149,9 +149,10 @@ export function MediaSidebar({
 
       <aside
         className={cn(
-          "fixed left-0 top-0 h-screen bg-surface border-r border-border flex flex-col transition-all duration-300 z-40",
+          "fixed left-0 top-0 bg-surface border-r border-border flex flex-col transition-all duration-300 z-40",
           isCollapsed ? "w-16 -translate-x-full md:translate-x-0" : "w-64"
         )}
+        style={{ height: "100dvh" }}
       >
         <div className="h-16 border-b border-border flex items-center justify-center px-4">
           <Link

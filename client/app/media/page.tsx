@@ -41,7 +41,7 @@ export default function MediaPage() {
 
   if (isLoading) {
     return (
-      <div className="h-screen flex items-center justify-center">
+      <div className="flex items-center justify-center" style={{ height: "100dvh" }}>
         <div className="w-full max-w-md text-center">
           <BananaLoading speed={4}/>
         </div>

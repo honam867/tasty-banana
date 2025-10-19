@@ -234,8 +234,8 @@ export default function ThreadPage() {
   };
 
   return (
-    <div className="h-screen flex flex-col">
-      <header className="h-16 border-b border-border flex items-center px-6 gap-3">
+    <div className="flex flex-col overflow-hidden" style={{ height: "100dvh" }}>
+      <header className="flex-shrink-0 h-16 border-b border-border flex items-center px-6 gap-3">
         <button
           onClick={() => {
             const event = new CustomEvent("toggleSidebar");
@@ -259,6 +259,7 @@ export default function ThreadPage() {
       <div
         ref={scrollContainerRef}
         className="flex-1 overflow-y-auto p-6 custom-scrollbar"
+        style={{ WebkitOverflowScrolling: "touch", touchAction: "pan-y" } as React.CSSProperties}
       >
         <div className="max-w-4xl mx-auto">
           {isLoading && messages.length === 0 ? (
@@ -318,7 +319,7 @@ export default function ThreadPage() {
         </div>
       </div>
 
-      <footer className="border-t border-border p-6">
+      <footer className="flex-shrink-0 border-t border-border p-6">
         <div className="max-w-4xl mx-auto">
           <GenerationConfig
             value={generationConfig}
