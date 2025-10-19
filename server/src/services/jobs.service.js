@@ -6,50 +6,236 @@ import { jobs, images, messages } from "../db/schema.js";
 import { eq } from "drizzle-orm";
 import {
   JOB_STATUS,
-  VALID_JOB_STATUSES,
-  VALID_JOB_TYPES,
-  TERMINAL_JOB_STATUSES,
   JOB_ERROR_CODE,
   JOB_TIMEOUT,
-  MESSAGE_ROLE,
   MESSAGE_STATUS,
 } from "../utils/constant.js";
 import JobError from "../utils/JobError.js";
 import { withRetry, withTimeout } from "../utils/functions.js";
 import { generateImage } from "./gemini.service.js";
-import { uploadToR2, getR2Bucket } from "../config/r2.js";
-import { updateMessage, createMessage } from "./messages.service.js";
-import { ulid } from "ulid";
+import { uploadToR2 } from "../config/r2.js";
+import {
+  cleanupOrphanedImages,
+  generateImageStorageKey,
+  validateJobCreation,
+  validateJobStatusUpdate,
+  validateStatusTransition,
+  handleJobDatabaseError,
+  createAssistantMessageWithJobResult,
+  updateUserMessageStatus,
+  createFailureResult,
+  createSuccessResult,
+} from "../utils/job-utils.js";
+
+// ============================================================================
+// Internal Helper Functions
+// ============================================================================
 
 /**
- * Delete orphaned images from R2 storage
- * Used for cleanup when image DB record creation fails
- * @param {Array<string>} storageKeys - Array of storage keys to delete
- * @returns {Promise<void>}
+ * Generic validation helper
+ * @param {string} fieldValue - Field value to validate
+ * @param {string} fieldName - Name of the field
+ * @throws {JobError} If validation fails
  */
-const cleanupOrphanedImages = async (storageKeys) => {
-  if (isEmpty(storageKeys)) {
-    return;
-  }
-
-  console.log(
-    `🧹 Cleaning up ${storageKeys.length} orphaned images from R2...`
-  );
-
-  for (const key of storageKeys) {
-    try {
-      const bucket = getR2Bucket();
-      await bucket.delete(key);
-      console.log(`   ✅ Deleted orphaned image: ${key}`);
-    } catch (error) {
-      console.error(
-        `   ⚠️ Failed to delete orphaned image ${key}:`,
-        get(error, "message")
-      );
-      // Don't throw - best effort cleanup
-    }
+const validateRequired = (fieldValue, fieldName) => {
+  if (isNil(fieldValue) || isEmpty(fieldValue)) {
+    throw new JobError(
+      `${fieldName} is required`,
+      JOB_ERROR_CODE.MISSING_REQUIRED_FIELD,
+      400,
+      { field: fieldName }
+    );
   }
 };
+
+/**
+ * Generic error wrapper for database operations
+ * @param {Function} operation - Async function to execute
+ * @param {string} errorContext - Context for error messages
+ * @param {Object} context - Additional context
+ * @returns {Promise} Result of the operation
+ */
+const executeDbOperation = async (operation, errorContext, context = {}) => {
+  try {
+    return await operation();
+  } catch (error) {
+    if (error instanceof JobError) throw error;
+    
+    console.error(`❌ Error ${errorContext}:`, get(error, "message"));
+    throw new JobError(
+      `Failed to ${errorContext}: ${get(error, "message")}`,
+      JOB_ERROR_CODE.DATABASE_ERROR,
+      500,
+      { ...context, originalError: get(error, "message") }
+    );
+  }
+};
+
+/**
+ * Fetch a single record from database
+ * @param {Object} table - Drizzle table
+ * @param {Function} whereClause - Where condition
+ * @param {string} recordType - Type of record for error messages
+ * @param {Object} context - Additional context
+ * @returns {Promise<Object|null>} Record or null
+ */
+const fetchSingleRecord = async (table, whereClause, recordType, context) => {
+  return executeDbOperation(
+    async () => {
+      const result = await db
+        .select()
+        .from(table)
+        .where(whereClause)
+        .limit(1);
+      return isEmpty(result) ? null : get(result, "[0]");
+    },
+    `fetch ${recordType}`,
+    context
+  );
+};
+
+/**
+ * Update job status in database with validation
+ * @param {string} jobId - Job ID
+ * @param {string} newStatus - New status
+ * @param {string} currentStatus - Current status (optional, for validation)
+ * @returns {Promise<Object>} Updated job
+ */
+const updateJobStatusInDb = async (jobId, newStatus, currentStatus = null) => {
+  if (currentStatus) {
+    validateStatusTransition(currentStatus, newStatus);
+  }
+
+  const result = await withRetry(
+    async () => {
+      return await db
+        .update(jobs)
+        .set({ status: newStatus, updatedAt: new Date() })
+        .where(eq(jobs.id, jobId))
+        .returning();
+    },
+    { maxRetries: 3, retryableErrors: ["ECONNRESET", "ETIMEDOUT", "ECONNREFUSED"] }
+  );
+
+  const updatedJob = get(result, "[0]");
+  if (isNil(updatedJob)) {
+    throw new JobError(
+      "Failed to update job status - no data returned",
+      JOB_ERROR_CODE.DATABASE_ERROR,
+      500,
+      { jobId, newStatus }
+    );
+  }
+
+  console.log(`✅ Updated job ${jobId} status: ${currentStatus || '?'} → ${newStatus}`);
+  return updatedJob;
+};
+
+/**
+ * Generate images and handle generation errors
+ * @param {Object} parameters - Job parameters
+ * @param {string} jobId - Job ID
+ * @returns {Promise<Object>} Generation result
+ */
+const executeImageGeneration = async (parameters, jobId) => {
+  const prompt = get(parameters, "prompt");
+  if (isEmpty(prompt)) {
+    throw new JobError(
+      "Job parameters missing required 'prompt' field",
+      JOB_ERROR_CODE.INVALID_INPUT,
+      400,
+      { jobId, parameters }
+    );
+  }
+
+  const generationParams = {
+    prompt,
+    numberOfImages: get(parameters, "numberOfImages", 1),
+    aspectRatio: get(parameters, "aspectRatio", "1:1"),
+    seed: get(parameters, "seed"),
+  };
+
+  console.log(`   Generating images with prompt: "${prompt.substring(0, 50)}..."`);
+
+  const result = await withTimeout(
+    () => generateImage(generationParams),
+    JOB_TIMEOUT.GENERATION,
+    "Image generation"
+  );
+
+  const imagesList = get(result, "images", []);
+  if (isEmpty(imagesList)) {
+    throw new JobError(
+      "No images generated",
+      JOB_ERROR_CODE.NO_IMAGES_GENERATED,
+      500,
+      { jobId, generationParams }
+    );
+  }
+
+  console.log(`✅ Image generation successful`);
+  console.log(`   Images generated: ${get(result, "count", 0)}`);
+  
+  return { result, generationParams };
+};
+
+/**
+ * Handle job processing failure
+ * @param {string} jobId - Job ID
+ * @param {string} threadId - Thread ID
+ * @param {string} messageId - Message ID
+ * @param {Error} error - Error object
+ * @param {string} failureType - Type of failure (generation/storage)
+ * @returns {Promise<Object>} Failure result
+ */
+const handleJobFailure = async (jobId, threadId, messageId, error, failureType = "generation") => {
+  console.error(`❌ Image ${failureType} failed for job ${jobId}:`, get(error, "message"));
+
+  const failedJob = await updateJobStatus(jobId, JOB_STATUS.FAILED);
+
+  const failureResult = createFailureResult(failedJob, {
+    code: get(error, "code", JOB_ERROR_CODE.GENERATION_FAILED),
+    message: get(error, "message", `Image ${failureType} failed`),
+    statusCode: get(error, "statusCode", get(error, "status", 500)),
+    context: get(error, "context", get(error, "originalError")),
+  });
+
+  await updateUserMessageStatus(messageId, MESSAGE_STATUS.FAILED, failureType === "storage" ? "storage error" : undefined);
+
+  try {
+    await createAssistantMessageWithJobResult(jobId, threadId, failureResult);
+  } catch (messageCreateError) {
+    console.error(`⚠️ Failed to create assistant message after ${failureType} failure:`, get(messageCreateError, "message"));
+  }
+
+  return failureResult;
+};
+
+/**
+ * Handle successful job completion
+ * @param {string} jobId - Job ID
+ * @param {string} threadId - Thread ID
+ * @param {string} messageId - Message ID
+ * @param {Object} generationResult - Generation result
+ * @param {Array} storedImages - Stored images
+ * @returns {Promise<Object>} Success result
+ */
+const handleJobSuccess = async (jobId, threadId, messageId, generationResult, storedImages) => {
+  const succeededJob = await updateJobStatus(jobId, JOB_STATUS.SUCCEEDED);
+  const successResult = createSuccessResult(succeededJob, generationResult, storedImages);
+
+  await updateUserMessageStatus(messageId, MESSAGE_STATUS.SUCCEEDED);
+
+  try {
+    await createAssistantMessageWithJobResult(jobId, threadId, successResult);
+    console.log(`✅ Assistant message created with job results for thread ${threadId}`);
+  } catch (messageCreateError) {
+    console.error(`⚠️ Failed to create assistant message after successful job:`, get(messageCreateError, "message"));
+  }
+
+  return successResult;
+};
+
 
 /**
  * Create a new job record in the database
@@ -64,89 +250,24 @@ const cleanupOrphanedImages = async (storageKeys) => {
  * @throws {Error} If validation fails or database operation fails
  */
 export const createJob = async (jobData) => {
-  const messageId = get(jobData, "messageId");
-  const providerId = get(jobData, "providerId");
-  const jobType = get(jobData, "jobType");
+  const { messageId, providerId, jobType, externalId } = jobData;
   const status = get(jobData, "status", JOB_STATUS.QUEUED);
   const parameters = get(jobData, "parameters", {});
-  const externalId = get(jobData, "externalId");
 
-  // Validate required fields
-  if (isNil(messageId) || isEmpty(messageId)) {
-    throw new JobError(
-      "messageId is required",
-      JOB_ERROR_CODE.MISSING_REQUIRED_FIELD,
-      400,
-      { field: "messageId" }
-    );
-  }
-
-  if (isNil(providerId) || isEmpty(providerId)) {
-    throw new JobError(
-      "providerId is required",
-      JOB_ERROR_CODE.MISSING_REQUIRED_FIELD,
-      400,
-      { field: "providerId" }
-    );
-  }
-
-  if (isNil(jobType) || isEmpty(jobType)) {
-    throw new JobError(
-      "jobType is required",
-      JOB_ERROR_CODE.MISSING_REQUIRED_FIELD,
-      400,
-      { field: "jobType" }
-    );
-  }
-
-  // Validate job type
-  if (!VALID_JOB_TYPES.includes(jobType)) {
-    throw new JobError(
-      `Invalid job type: ${jobType}. Must be one of: ${VALID_JOB_TYPES.join(
-        ", "
-      )}`,
-      JOB_ERROR_CODE.INVALID_JOB_TYPE,
-      400,
-      { jobType, validTypes: VALID_JOB_TYPES }
-    );
-  }
-
-  // Validate status
-  if (!VALID_JOB_STATUSES.includes(status)) {
-    throw new JobError(
-      `Invalid status: ${status}. Must be one of: ${VALID_JOB_STATUSES.join(
-        ", "
-      )}`,
-      JOB_ERROR_CODE.INVALID_STATUS,
-      400,
-      { status, validStatuses: VALID_JOB_STATUSES }
-    );
-  }
+  validateJobCreation(jobData);
 
   try {
-    // Use retry logic for database operations
     const result = await withRetry(
       async () => {
         return await db
           .insert(jobs)
-          .values({
-            messageId,
-            providerId,
-            jobType,
-            status,
-            parameters,
-            externalId: externalId || null,
-          })
+          .values({ messageId, providerId, jobType, status, parameters, externalId: externalId || null })
           .returning();
       },
-      {
-        maxRetries: 3,
-        retryableErrors: ["ECONNRESET", "ETIMEDOUT", "ECONNREFUSED"],
-      }
+      { maxRetries: 3, retryableErrors: ["ECONNRESET", "ETIMEDOUT", "ECONNREFUSED"] }
     );
 
     const createdJob = get(result, "[0]");
-
     if (isNil(createdJob)) {
       throw new JobError(
         "Failed to create job record - no data returned",
@@ -156,45 +277,10 @@ export const createJob = async (jobData) => {
       );
     }
 
-    console.log(
-      `✅ Created job with ID: ${get(createdJob, "id")}, status: ${status}`
-    );
-
+    console.log(`✅ Created job with ID: ${get(createdJob, "id")}, status: ${status}`);
     return createdJob;
   } catch (error) {
-    // If it's already a JobError, re-throw it
-    if (error instanceof JobError) {
-      throw error;
-    }
-
-    const errorMessage = get(error, "message", "");
-    const errorCode = get(error, "code", "");
-
-    // Handle unique constraint violation (messageId already has a job)
-    // Postgres error code 23505 = unique_violation
-    if (
-      errorCode === "23505" ||
-      errorMessage.includes("unique") ||
-      errorMessage.includes("duplicate") ||
-      errorMessage.includes("message_id")
-    ) {
-      console.error(`❌ Job already exists for messageId: ${messageId}`);
-      throw new JobError(
-        `Job already exists for messageId: ${messageId}`,
-        JOB_ERROR_CODE.JOB_ALREADY_EXISTS,
-        409,
-        { messageId }
-      );
-    }
-
-    // Handle other database errors
-    console.error("❌ Error creating job:", errorMessage);
-    throw new JobError(
-      `Failed to create job: ${errorMessage}`,
-      JOB_ERROR_CODE.DATABASE_ERROR,
-      500,
-      { messageId, providerId, jobType, originalError: errorMessage }
-    );
+    handleJobDatabaseError(error, "create job", { messageId, providerId, jobType });
   }
 };
 
@@ -206,48 +292,19 @@ export const createJob = async (jobData) => {
  * @throws {Error} If job not found, invalid status, or database operation fails
  */
 export const updateJobStatus = async (jobId, newStatus) => {
-  if (isNil(jobId) || isEmpty(jobId)) {
-    throw new JobError(
-      "jobId is required",
-      JOB_ERROR_CODE.MISSING_REQUIRED_FIELD,
-      400,
-      { field: "jobId" }
-    );
-  }
-
-  if (isNil(newStatus) || isEmpty(newStatus)) {
-    throw new JobError(
-      "newStatus is required",
-      JOB_ERROR_CODE.MISSING_REQUIRED_FIELD,
-      400,
-      { field: "newStatus" }
-    );
-  }
-
-  // Validate status
-  if (!VALID_JOB_STATUSES.includes(newStatus)) {
-    throw new JobError(
-      `Invalid status: ${newStatus}. Must be one of: ${VALID_JOB_STATUSES.join(
-        ", "
-      )}`,
-      JOB_ERROR_CODE.INVALID_STATUS,
-      400,
-      { newStatus, validStatuses: VALID_JOB_STATUSES }
-    );
-  }
+  validateJobStatusUpdate(jobId, newStatus);
 
   try {
-    // Use timeout for status update operations
-    const result = await withTimeout(
+    return await withTimeout(
       async () => {
-        // First, check if job exists
-        const existingJob = await db
-          .select()
-          .from(jobs)
-          .where(eq(jobs.id, jobId))
-          .limit(1);
+        const existingJob = await fetchSingleRecord(
+          jobs,
+          eq(jobs.id, jobId),
+          "job",
+          { jobId }
+        );
 
-        if (isEmpty(existingJob)) {
+        if (isNil(existingJob)) {
           throw new JobError(
             `Job not found with ID: ${jobId}`,
             JOB_ERROR_CODE.JOB_NOT_FOUND,
@@ -256,78 +313,17 @@ export const updateJobStatus = async (jobId, newStatus) => {
           );
         }
 
-        const currentStatus = get(existingJob, "[0].status");
-
-        // Validate status transitions
-        // Once succeeded, failed, or canceled, job status cannot change
-        if (TERMINAL_JOB_STATUSES.includes(currentStatus)) {
-          throw new JobError(
-            `Cannot update job status from terminal state "${currentStatus}" to "${newStatus}"`,
-            JOB_ERROR_CODE.INVALID_STATUS_TRANSITION,
-            400,
-            {
-              currentStatus,
-              newStatus,
-              terminalStatuses: TERMINAL_JOB_STATUSES,
-            }
-          );
-        }
-
-        // Update the job status with retry logic
-        const updateResult = await withRetry(
-          async () => {
-            return await db
-              .update(jobs)
-              .set({
-                status: newStatus,
-                updatedAt: new Date(),
-              })
-              .where(eq(jobs.id, jobId))
-              .returning();
-          },
-          {
-            maxRetries: 3,
-            retryableErrors: ["ECONNRESET", "ETIMEDOUT", "ECONNREFUSED"],
-          }
-        );
-
-        const updatedJob = get(updateResult, "[0]");
-
-        if (isNil(updatedJob)) {
-          throw new JobError(
-            "Failed to update job status - no data returned",
-            JOB_ERROR_CODE.DATABASE_ERROR,
-            500,
-            { jobId, newStatus }
-          );
-        }
-
-        console.log(
-          `✅ Updated job ${jobId} status: ${currentStatus} → ${newStatus}`
-        );
-
-        return updatedJob;
+        return await updateJobStatusInDb(jobId, newStatus, existingJob.status);
       },
       JOB_TIMEOUT.STATUS_UPDATE,
       "Job status update"
     );
-
-    return result;
   } catch (error) {
-    // If it's already a JobError, re-throw it
     if (error instanceof JobError) {
-      console.error(
-        `❌ Error updating job status for ${jobId}:`,
-        get(error, "message")
-      );
+      console.error(`❌ Error updating job status for ${jobId}:`, get(error, "message"));
       throw error;
     }
-
-    // Wrap other errors
-    console.error(
-      `❌ Error updating job status for ${jobId}:`,
-      get(error, "message")
-    );
+    console.error(`❌ Error updating job status for ${jobId}:`, get(error, "message"));
     throw new JobError(
       `Failed to update job status: ${get(error, "message")}`,
       JOB_ERROR_CODE.DATABASE_ERROR,
@@ -344,60 +340,10 @@ export const updateJobStatus = async (jobId, newStatus) => {
  * @throws {JobError} If validation fails or database operation fails
  */
 export const getJobById = async (jobId) => {
-  if (isNil(jobId) || isEmpty(jobId)) {
-    throw new JobError(
-      "jobId is required",
-      JOB_ERROR_CODE.MISSING_REQUIRED_FIELD,
-      400,
-      { field: "jobId" }
-    );
-  }
-
-  try {
-    const result = await db
-      .select()
-      .from(jobs)
-      .where(eq(jobs.id, jobId))
-      .limit(1);
-
-    if (isEmpty(result)) {
-      return null;
-    }
-
-    return get(result, "[0]");
-  } catch (error) {
-    console.error(
-      `❌ Error fetching job by ID ${jobId}:`,
-      get(error, "message")
-    );
-
-    // If it's already a JobError, re-throw it
-    if (error instanceof JobError) {
-      throw error;
-    }
-
-    // Wrap database errors
-    throw new JobError(
-      `Failed to fetch job: ${get(error, "message")}`,
-      JOB_ERROR_CODE.DATABASE_ERROR,
-      500,
-      { jobId, originalError: get(error, "message") }
-    );
-  }
+  validateRequired(jobId, "jobId");
+  return fetchSingleRecord(jobs, eq(jobs.id, jobId), "job", { jobId });
 };
 
-/**
- * Generate storage key for generated images
- * Pattern: gen/{job_id}/{ulid}.png
- * @param {string} jobId - Job UUID
- * @param {number} index - Image index (for multiple images)
- * @returns {string} Storage key
- */
-const generateImageStorageKey = (jobId, index) => {
-  const uniqueId = ulid();
-  const imageIndex = String(index).padStart(3, "0");
-  return `gen/${jobId}/${uniqueId}_${imageIndex}.png`;
-};
 
 /**
  * Store a single generated image to R2 and create image record
@@ -417,39 +363,19 @@ export const storeGeneratedImage = async ({
   index,
   metadata = {},
 }) => {
-  if (isNil(jobId) || isEmpty(jobId)) {
-    throw new JobError(
-      "jobId is required",
-      JOB_ERROR_CODE.MISSING_REQUIRED_FIELD,
-      400,
-      { field: "jobId" }
-    );
-  }
-
-  if (isNil(imageData) || isEmpty(imageData)) {
-    throw new JobError(
-      "imageData is required",
-      JOB_ERROR_CODE.MISSING_REQUIRED_FIELD,
-      400,
-      { field: "imageData" }
-    );
-  }
+  validateRequired(jobId, "jobId");
+  validateRequired(imageData, "imageData");
 
   let storageKey;
   let uploadSucceeded = false;
 
   try {
-    // Convert base64 to buffer
     const imageBuffer = Buffer.from(imageData, "base64");
-
-    // Generate storage key
     storageKey = generateImageStorageKey(jobId, index);
 
     console.log(`   Uploading image ${index} to storage...`);
     console.log(`   Storage key: ${storageKey}`);
 
-    // Upload to R2 with timeout and retry
-    // Note: Only pass flat string metadata to R2, not nested objects
     const uploadResult = await withTimeout(
       async () => {
         return await withRetry(
@@ -458,16 +384,10 @@ export const storeGeneratedImage = async ({
               buffer: imageBuffer,
               key: storageKey,
               contentType: mimeType || "image/png",
-              metadata: {
-                jobId,
-                index: String(index),
-              },
+              metadata: { jobId, index: String(index) },
             });
           },
-          {
-            maxRetries: 3,
-            retryableErrors: ["ECONNRESET", "ETIMEDOUT", "ENOTFOUND"],
-          }
+          { maxRetries: 3, retryableErrors: ["ECONNRESET", "ETIMEDOUT", "ENOTFOUND"] }
         );
       },
       JOB_TIMEOUT.STORAGE,
@@ -477,7 +397,6 @@ export const storeGeneratedImage = async ({
     uploadSucceeded = true;
     console.log(`   ✅ Image uploaded: ${get(uploadResult, "publicUrl")}`);
 
-    // Create image record in database with retry
     const imageRecord = await withRetry(
       async () => {
         return await db
@@ -496,14 +415,10 @@ export const storeGeneratedImage = async ({
           })
           .returning();
       },
-      {
-        maxRetries: 3,
-        retryableErrors: ["ECONNRESET", "ETIMEDOUT", "ECONNREFUSED"],
-      }
+      { maxRetries: 3, retryableErrors: ["ECONNRESET", "ETIMEDOUT", "ECONNREFUSED"] }
     );
 
     const createdImage = get(imageRecord, "[0]");
-
     if (isNil(createdImage)) {
       throw new JobError(
         "Failed to create image record in database - no data returned",
@@ -514,28 +429,16 @@ export const storeGeneratedImage = async ({
     }
 
     console.log(`   ✅ Image record created: ${get(createdImage, "id")}`);
-
     return createdImage;
   } catch (error) {
-    // If upload succeeded but DB insert failed, cleanup the orphaned image
     if (uploadSucceeded && storageKey) {
-      console.error(
-        `   ⚠️ Image uploaded but DB record failed. Cleaning up orphaned image...`
-      );
+      console.error(`   ⚠️ Image uploaded but DB record failed. Cleaning up orphaned image...`);
       await cleanupOrphanedImages([storageKey]);
     }
 
-    console.error(
-      `❌ Failed to store image ${index} for job ${jobId}:`,
-      get(error, "message")
-    );
+    console.error(`❌ Failed to store image ${index} for job ${jobId}:`, get(error, "message"));
+    if (error instanceof JobError) throw error;
 
-    // If it's already a JobError, re-throw it
-    if (error instanceof JobError) {
-      throw error;
-    }
-
-    // Wrap other errors
     throw new JobError(
       `Failed to store image: ${get(error, "message")}`,
       JOB_ERROR_CODE.STORAGE_FAILED,
@@ -558,83 +461,51 @@ export const storeJobImages = async (
   generationResult,
   generationParams = {}
 ) => {
-  if (isNil(jobId) || isEmpty(jobId)) {
-    throw new Error("jobId is required");
-  }
-
-  if (isNil(generationResult)) {
-    throw new Error("generationResult is required");
-  }
+  validateRequired(jobId, "jobId");
+  if (isNil(generationResult)) throw new Error("generationResult is required");
 
   const imagesList = get(generationResult, "images", []);
-
-  if (isEmpty(imagesList)) {
-    throw new Error("No images found in generation result");
-  }
+  if (isEmpty(imagesList)) throw new Error("No images found in generation result");
 
   console.log(`📦 Storing ${imagesList.length} generated images...`);
 
-  // Extract only user-customizable parameters for metadata
-  // Omit seed if null/undefined
   const userParams = {
     numberOfImages: get(generationParams, "numberOfImages"),
     aspectRatio: get(generationParams, "aspectRatio"),
   };
-
   const seed = get(generationParams, "seed");
-  if (!isNil(seed)) {
-    userParams.seed = seed;
-  }
+  if (!isNil(seed)) userParams.seed = seed;
 
   const storedImages = [];
   const errors = [];
 
-  // Store each image sequentially
   for (const image of imagesList) {
     try {
-      const imageData = get(image, "imageData");
-      const mimeType = get(image, "mimeType", "image/png");
-      const index = get(image, "index", 0);
-
       const storedImage = await storeGeneratedImage({
         jobId,
-        imageData,
-        mimeType,
-        index,
-        metadata: {
-          generationParams: userParams,
-        },
+        imageData: get(image, "imageData"),
+        mimeType: get(image, "mimeType", "image/png"),
+        index: get(image, "index", 0),
+        metadata: { generationParams: userParams },
       });
-
       storedImages.push(storedImage);
     } catch (error) {
       const index = get(image, "index", 0);
       console.error(`Failed to store image ${index}:`, get(error, "message"));
-      errors.push({
-        index,
-        error: get(error, "message"),
-      });
+      errors.push({ index, error: get(error, "message") });
     }
   }
 
-  // If any errors occurred, throw with details
   if (!isEmpty(errors)) {
     const errorMessage = `Failed to store ${errors.length} of ${imagesList.length} images`;
     console.error(`❌ ${errorMessage}`);
-
-    // If ALL images failed, throw error
     if (isEmpty(storedImages)) {
       throw new Error(`${errorMessage}: All image uploads failed`);
     }
-
-    // If SOME images failed, log warning but continue
     console.warn(`⚠️ ${errorMessage}, but ${storedImages.length} succeeded`);
   }
 
-  console.log(
-    `✅ Successfully stored ${storedImages.length} images for job ${jobId}`
-  );
-
+  console.log(`✅ Successfully stored ${storedImages.length} images for job ${jobId}`);
   return storedImages;
 };
 
@@ -645,42 +516,18 @@ export const storeJobImages = async (
  * @throws {JobError} If validation fails or database operation fails
  */
 export const getImagesByJobId = async (jobId) => {
-  if (isNil(jobId) || isEmpty(jobId)) {
-    throw new JobError(
-      "jobId is required",
-      JOB_ERROR_CODE.MISSING_REQUIRED_FIELD,
-      400,
-      { field: "jobId" }
-    );
-  }
-
-  try {
-    const result = await db
-      .select()
-      .from(images)
-      .where(eq(images.jobId, jobId))
-      .orderBy(images.createdAt);
-
-    return result;
-  } catch (error) {
-    console.error(
-      `❌ Error fetching images for job ${jobId}:`,
-      get(error, "message")
-    );
-
-    // If it's already a JobError, re-throw it
-    if (error instanceof JobError) {
-      throw error;
-    }
-
-    // Wrap database errors
-    throw new JobError(
-      `Failed to fetch images: ${get(error, "message")}`,
-      JOB_ERROR_CODE.DATABASE_ERROR,
-      500,
-      { jobId, originalError: get(error, "message") }
-    );
-  }
+  validateRequired(jobId, "jobId");
+  return executeDbOperation(
+    async () => {
+      return await db
+        .select()
+        .from(images)
+        .where(eq(images.jobId, jobId))
+        .orderBy(images.createdAt);
+    },
+    `fetch images for job ${jobId}`,
+    { jobId }
+  );
 };
 
 /**
@@ -690,173 +537,15 @@ export const getImagesByJobId = async (jobId) => {
  * @throws {JobError} If validation fails or database operation fails
  */
 export const getJobWithImages = async (jobId) => {
-  if (isNil(jobId) || isEmpty(jobId)) {
-    throw new JobError(
-      "jobId is required",
-      JOB_ERROR_CODE.MISSING_REQUIRED_FIELD,
-      400,
-      { field: "jobId" }
-    );
-  }
-
-  try {
-    // Get job
-    const job = await getJobById(jobId);
-
-    if (isNil(job)) {
-      return null;
-    }
-
-    // Get images for this job
-    const imagesList = await getImagesByJobId(jobId);
-
-    // Return job with images
-    return {
-      ...job,
-      images: imagesList,
-    };
-  } catch (error) {
-    console.error(
-      `❌ Error fetching job with images ${jobId}:`,
-      get(error, "message")
-    );
-
-    // If it's already a JobError, re-throw it
-    if (error instanceof JobError) {
-      throw error;
-    }
-
-    // Wrap other errors
-    throw new JobError(
-      `Failed to fetch job with images: ${get(error, "message")}`,
-      JOB_ERROR_CODE.DATABASE_ERROR,
-      500,
-      { jobId, originalError: get(error, "message") }
-    );
-  }
+  validateRequired(jobId, "jobId");
+  
+  const job = await getJobById(jobId);
+  if (isNil(job)) return null;
+  
+  const imagesList = await getImagesByJobId(jobId);
+  return { ...job, images: imagesList };
 };
 
-/**
- * Create assistant message with job results after processing
- * @param {string} jobId - UUID of the job
- * @param {string} threadId - UUID of the thread
- * @param {Object} jobResult - Result from processJob
- * @returns {Promise<Object>} Created assistant message object
- * @throws {JobError} If validation fails or creation fails
- */
-export const createAssistantMessageWithJobResult = async (
-  jobId,
-  threadId,
-  jobResult
-) => {
-  if (isNil(jobId) || isEmpty(jobId)) {
-    throw new JobError(
-      "jobId is required",
-      JOB_ERROR_CODE.MISSING_REQUIRED_FIELD,
-      400,
-      { field: "jobId" }
-    );
-  }
-
-  if (isNil(threadId) || isEmpty(threadId)) {
-    throw new JobError(
-      "threadId is required",
-      JOB_ERROR_CODE.MISSING_REQUIRED_FIELD,
-      400,
-      { field: "threadId" }
-    );
-  }
-
-  if (isNil(jobResult)) {
-    throw new JobError(
-      "jobResult is required",
-      JOB_ERROR_CODE.MISSING_REQUIRED_FIELD,
-      400,
-      { field: "jobResult" }
-    );
-  }
-
-  try {
-    const success = get(jobResult, "success", false);
-    const job = get(jobResult, "job");
-    const jobStatus = get(job, "status");
-
-    console.log(
-      `📝 Creating assistant message for job ${jobId} in thread ${threadId} (status: ${jobStatus})`
-    );
-
-    if (success) {
-      // Success case: Create message with image URLs
-      const storedImages = get(jobResult, "storedImages", []);
-
-      if (isEmpty(storedImages)) {
-        console.warn(`⚠️ No stored images found for successful job ${jobId}`);
-      }
-
-      // Build content with image URLs
-      const imageUrls = storedImages.map((img) => get(img, "url"));
-      const imageCount = imageUrls.length;
-
-      const messageContent = `Generated ${imageCount} image${
-        imageCount !== 1 ? "s" : ""
-      } successfully.\n\nImage URLs:\n${imageUrls
-        .map((url, idx) => `${idx + 1}. ${url}`)
-        .join("\n")}`;
-
-      const assistantMessage = await createMessage(
-        threadId,
-        MESSAGE_ROLE.ASSISTANT,
-        messageContent,
-        MESSAGE_STATUS.SUCCEEDED
-      );
-
-      console.log(
-        `✅ Assistant message created with ${imageCount} image URL(s)`
-      );
-
-      return assistantMessage;
-    } else {
-      // Failure case: Create message with error details
-      const error = get(jobResult, "error", {});
-      const errorCode = get(error, "code", "UNKNOWN_ERROR");
-      const errorMessage = get(error, "message", "Job processing failed");
-
-      const messageContent = `Image generation failed.\n\nError: ${errorCode}\nMessage: ${errorMessage}`;
-
-      const assistantMessage = await createMessage(
-        threadId,
-        MESSAGE_ROLE.ASSISTANT,
-        messageContent,
-        MESSAGE_STATUS.FAILED
-      );
-
-      console.log(`✅ Assistant message created with error details`);
-
-      return assistantMessage;
-    }
-  } catch (error) {
-    console.error(
-      `❌ Failed to create assistant message for job ${jobId}:`,
-      get(error, "message")
-    );
-
-    // If it's already a JobError, re-throw it
-    if (error instanceof JobError) {
-      throw error;
-    }
-
-    // Wrap other errors
-    throw new JobError(
-      `Failed to create assistant message with job result: ${get(
-        error,
-        "message"
-      )}`,
-      JOB_ERROR_CODE.MESSAGE_UPDATE_FAILED,
-      500,
-      { jobId, threadId, originalError: get(error, "message") }
-    );
-  }
-};
 
 /**
  * Get all jobs for a specific thread
@@ -865,96 +554,47 @@ export const createAssistantMessageWithJobResult = async (
  * @throws {JobError} If validation fails or database operation fails
  */
 export const getJobsByThread = async (threadId) => {
-  if (isNil(threadId) || isEmpty(threadId)) {
-    throw new JobError(
-      "threadId is required",
-      JOB_ERROR_CODE.MISSING_REQUIRED_FIELD,
-      400,
-      { field: "threadId" }
-    );
-  }
-
-  try {
-    // Join jobs with messages to filter by threadId
-    const result = await db
-      .select({
-        id: jobs.id,
-        messageId: jobs.messageId,
-        providerId: jobs.providerId,
-        jobType: jobs.jobType,
-        status: jobs.status,
-        externalId: jobs.externalId,
-        parameters: jobs.parameters,
-        createdAt: jobs.createdAt,
-        updatedAt: jobs.updatedAt,
-      })
-      .from(jobs)
-      .innerJoin(messages, eq(jobs.messageId, messages.id))
-      .where(eq(messages.threadId, threadId));
-
-    return result;
-  } catch (error) {
-    console.error(
-      `❌ Error fetching jobs for thread ${threadId}:`,
-      get(error, "message")
-    );
-
-    // If it's already a JobError, re-throw it
-    if (error instanceof JobError) {
-      throw error;
-    }
-
-    // Wrap database errors
-    throw new JobError(
-      `Failed to fetch jobs for thread: ${get(error, "message")}`,
-      JOB_ERROR_CODE.DATABASE_ERROR,
-      500,
-      { threadId, originalError: get(error, "message") }
-    );
-  }
+  validateRequired(threadId, "threadId");
+  return executeDbOperation(
+    async () => {
+      return await db
+        .select({
+          id: jobs.id,
+          messageId: jobs.messageId,
+          providerId: jobs.providerId,
+          jobType: jobs.jobType,
+          status: jobs.status,
+          externalId: jobs.externalId,
+          parameters: jobs.parameters,
+          createdAt: jobs.createdAt,
+          updatedAt: jobs.updatedAt,
+        })
+        .from(jobs)
+        .innerJoin(messages, eq(jobs.messageId, messages.id))
+        .where(eq(messages.threadId, threadId));
+    },
+    `fetch jobs for thread ${threadId}`,
+    { threadId }
+  );
 };
 
 /**
  * Process a job - orchestrates the full job lifecycle
- * This function handles:
- * 1. Updating job status to 'processing'
- * 2. Calling Gemini service to generate images
- * 3. Updating job status to 'succeeded' or 'failed' based on outcome
- * 4. Creating assistant message with results
- *
  * @param {string} jobId - UUID of the job to process
  * @param {string} threadId - UUID of the thread (for creating assistant message)
  * @returns {Promise<Object>} Object containing job and generation result
  * @throws {Error} If job not found or processing fails
  */
 export const processJob = async (jobId, threadId) => {
-  if (isNil(jobId) || isEmpty(jobId)) {
-    throw new JobError(
-      "jobId is required",
-      JOB_ERROR_CODE.MISSING_REQUIRED_FIELD,
-      400,
-      { field: "jobId" }
-    );
-  }
-
-  if (isNil(threadId) || isEmpty(threadId)) {
-    throw new JobError(
-      "threadId is required",
-      JOB_ERROR_CODE.MISSING_REQUIRED_FIELD,
-      400,
-      { field: "threadId" }
-    );
-  }
+  validateRequired(jobId, "jobId");
+  validateRequired(threadId, "threadId");
 
   console.log(`🔄 Starting job processing: ${jobId} for thread: ${threadId}`);
 
-  let job;
   let messageId;
 
   try {
-    // 1. Get the job
-    job = await getJobById(jobId);
-
+    const job = await getJobById(jobId);
     if (isNil(job)) {
       throw new JobError(
         `Job not found with ID: ${jobId}`,
@@ -965,306 +605,55 @@ export const processJob = async (jobId, threadId) => {
     }
 
     messageId = get(job, "messageId");
-
     console.log(`   Job type: ${get(job, "jobType")}`);
     console.log(`   Current status: ${get(job, "status")}`);
 
-    // 2. Update job status to 'processing'
     await updateJobStatus(jobId, JOB_STATUS.PROCESSING);
-
-    // 3. Update user message status to 'processing'
-    try {
-      await updateMessage(messageId, { status: MESSAGE_STATUS.PROCESSING });
-      console.log(
-        `✅ User message ${messageId} status updated to 'processing'`
-      );
-    } catch (messageUpdateError) {
-      console.error(
-        `⚠️ Failed to update user message status to processing:`,
-        get(messageUpdateError, "message")
-      );
-    }
-
-    // 4. Extract parameters for image generation
-    const parameters = get(job, "parameters", {});
-    const prompt = get(parameters, "prompt");
-
-    if (isEmpty(prompt)) {
-      throw new JobError(
-        "Job parameters missing required 'prompt' field",
-        JOB_ERROR_CODE.INVALID_INPUT,
-        400,
-        { jobId, parameters }
-      );
-    }
-
-    // Build generation parameters
-    const generationParams = {
-      prompt,
-      numberOfImages: get(parameters, "numberOfImages", 1),
-      aspectRatio: get(parameters, "aspectRatio", "1:1"),
-      seed: get(parameters, "seed"),
-    };
-
-    console.log(
-      `   Generating images with prompt: "${prompt.substring(0, 50)}..."`
-    );
-
-    // 4. Call Gemini service to generate images with timeout
-    let generationResult;
-    let storedImages = [];
+    await updateUserMessageStatus(messageId, MESSAGE_STATUS.PROCESSING);
 
     try {
-      generationResult = await withTimeout(
-        async () => {
-          return await generateImage(generationParams);
-        },
-        JOB_TIMEOUT.GENERATION,
-        "Image generation"
+      const { result: generationResult, generationParams } = await executeImageGeneration(
+        get(job, "parameters", {}),
+        jobId
       );
 
-      console.log(`✅ Image generation successful`);
-      console.log(`   Images generated: ${get(generationResult, "count", 0)}`);
-
-      // Validate generation result
-      const imagesList = get(generationResult, "images", []);
-      if (isEmpty(imagesList)) {
-        throw new JobError(
-          "No images generated",
-          JOB_ERROR_CODE.NO_IMAGES_GENERATED,
-          500,
-          { jobId, generationParams }
-        );
-      }
-
-      // 5. Store generated images to R2 and create image records
+      let storedImages;
       try {
-        storedImages = await storeJobImages(
-          jobId,
-          generationResult,
-          generationParams
-        );
+        storedImages = await storeJobImages(jobId, generationResult, generationParams);
         console.log(`✅ Stored ${storedImages.length} images successfully`);
       } catch (storageError) {
-        // Storage failed - mark job as failed and throw
-        console.error(
-          `❌ Image storage failed for job ${jobId}:`,
-          get(storageError, "message")
-        );
-
-        const failedJob = await updateJobStatus(jobId, JOB_STATUS.FAILED);
-
-        const errorCode = get(
-          storageError,
-          "code",
-          JOB_ERROR_CODE.STORAGE_FAILED
-        );
-        const errorMessage = get(
-          storageError,
-          "message",
-          "Failed to store generated images"
-        );
-
-        const storageFailureResult = {
-          job: failedJob,
-          error: {
-            code: errorCode,
-            message: errorMessage,
-            status: get(storageError, "statusCode", 500),
-            originalError: get(storageError, "context"),
-          },
-          success: false,
-        };
-
-        // Update user message status to 'failed'
-        try {
-          await updateMessage(messageId, { status: MESSAGE_STATUS.FAILED });
-          console.log(
-            `✅ User message ${messageId} status updated to 'failed' (storage error)`
-          );
-        } catch (messageUpdateError) {
-          console.error(
-            `⚠️ Failed to update user message status:`,
-            get(messageUpdateError, "message")
-          );
-        }
-
-        // Create assistant message with storage failure
-        try {
-          await createAssistantMessageWithJobResult(
-            jobId,
-            threadId,
-            storageFailureResult
-          );
-        } catch (messageCreateError) {
-          console.error(
-            `⚠️ Failed to create assistant message after storage failure:`,
-            get(messageCreateError, "message")
-          );
-        }
-
-        return storageFailureResult;
+        return await handleJobFailure(jobId, threadId, messageId, storageError, "storage");
       }
 
-      // 6. Update status to 'succeeded'
-      const succeededJob = await updateJobStatus(jobId, JOB_STATUS.SUCCEEDED);
-
-      const successResult = {
-        job: succeededJob,
-        result: generationResult,
-        storedImages,
-        success: true,
-      };
-
-      // 7. Update user message status to 'succeeded'
-      try {
-        await updateMessage(messageId, { status: MESSAGE_STATUS.SUCCEEDED });
-        console.log(
-          `✅ User message ${messageId} status updated to 'succeeded'`
-        );
-      } catch (messageUpdateError) {
-        console.error(
-          `⚠️ Failed to update user message status:`,
-          get(messageUpdateError, "message")
-        );
-      }
-
-      // 8. Create assistant message with job results
-      try {
-        await createAssistantMessageWithJobResult(
-          jobId,
-          threadId,
-          successResult
-        );
-        console.log(
-          `✅ Assistant message created with job results for thread ${threadId}`
-        );
-      } catch (messageCreateError) {
-        // Log error but don't fail the job - it already succeeded
-        console.error(
-          `⚠️ Failed to create assistant message after successful job:`,
-          get(messageCreateError, "message")
-        );
-      }
-
-      return successResult;
+      return await handleJobSuccess(jobId, threadId, messageId, generationResult, storedImages);
     } catch (generationError) {
-      // 9. On generation failure, update status to 'failed'
-      console.error(
-        `❌ Image generation failed for job ${jobId}:`,
-        get(generationError, "message")
-      );
-
-      const failedJob = await updateJobStatus(jobId, JOB_STATUS.FAILED);
-
-      const errorCode = get(
-        generationError,
-        "code",
-        JOB_ERROR_CODE.GENERATION_FAILED
-      );
-      const errorMessage = get(
-        generationError,
-        "message",
-        "Image generation failed"
-      );
-
-      const generationFailureResult = {
-        job: failedJob,
-        error: {
-          code: errorCode,
-          message: errorMessage,
-          status: get(
-            generationError,
-            "statusCode",
-            get(generationError, "status", 500)
-          ),
-          originalError: get(
-            generationError,
-            "context",
-            get(generationError, "originalError")
-          ),
-        },
-        success: false,
-      };
-
-      // Update user message status to 'failed'
-      try {
-        await updateMessage(messageId, { status: MESSAGE_STATUS.FAILED });
-        console.log(`✅ User message ${messageId} status updated to 'failed'`);
-      } catch (messageUpdateError) {
-        console.error(
-          `⚠️ Failed to update user message status:`,
-          get(messageUpdateError, "message")
-        );
-      }
-
-      // Create assistant message with generation failure
-      try {
-        await createAssistantMessageWithJobResult(
-          jobId,
-          threadId,
-          generationFailureResult
-        );
-      } catch (messageCreateError) {
-        console.error(
-          `⚠️ Failed to create assistant message after generation failure:`,
-          get(messageCreateError, "message")
-        );
-      }
-
-      return generationFailureResult;
+      return await handleJobFailure(jobId, threadId, messageId, generationError, "generation");
     }
   } catch (error) {
-    // Handle any other errors (job not found, status update failures, etc.)
-    console.error(
-      `❌ Job processing failed for ${jobId}:`,
-      get(error, "message")
-    );
+    console.error(`❌ Job processing failed for ${jobId}:`, get(error, "message"));
 
-    // Try to mark job as failed if possible
     try {
       await updateJobStatus(jobId, JOB_STATUS.FAILED);
-
-      // Try to create assistant message with failure info
-      const errorCode = get(error, "code", JOB_ERROR_CODE.UNKNOWN_ERROR);
-      const errorMessage = get(error, "message", "Job processing failed");
-
-      const failureResult = {
-        job: { id: jobId, status: JOB_STATUS.FAILED },
-        error: {
-          code: errorCode,
-          message: errorMessage,
-          status: get(error, "statusCode", 500),
-          originalError: get(error, "context"),
-        },
-        success: false,
-      };
+      const failureResult = createFailureResult(
+        { id: jobId, status: JOB_STATUS.FAILED },
+        {
+          code: get(error, "code", JOB_ERROR_CODE.UNKNOWN_ERROR),
+          message: get(error, "message", "Job processing failed"),
+          statusCode: get(error, "statusCode", 500),
+          context: get(error, "context"),
+        }
+      );
 
       try {
-        await createAssistantMessageWithJobResult(
-          jobId,
-          threadId,
-          failureResult
-        );
+        await createAssistantMessageWithJobResult(jobId, threadId, failureResult);
       } catch (messageCreateError) {
-        console.error(
-          `⚠️ Failed to create assistant message after job failure:`,
-          get(messageCreateError, "message")
-        );
+        console.error(`⚠️ Failed to create assistant message after job failure:`, get(messageCreateError, "message"));
       }
     } catch (updateError) {
-      console.error(
-        `⚠️ Could not update job status to failed:`,
-        get(updateError, "message")
-      );
+      console.error(`⚠️ Could not update job status to failed:`, get(updateError, "message"));
     }
 
-    // If it's already a JobError, re-throw it
-    if (error instanceof JobError) {
-      throw error;
-    }
-
-    // Wrap other errors
+    if (error instanceof JobError) throw error;
     throw new JobError(
       `Job processing failed: ${get(error, "message")}`,
       JOB_ERROR_CODE.UNKNOWN_ERROR,
@@ -1283,6 +672,5 @@ export default {
   getImagesByJobId,
   storeGeneratedImage,
   storeJobImages,
-  createAssistantMessageWithJobResult,
   processJob,
 };

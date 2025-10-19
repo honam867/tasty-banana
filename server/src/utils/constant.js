@@ -144,7 +144,7 @@ export const IMAGE_GENERATION_DEFAULTS = {
 export const IMAGE_GENERATION_CONSTRAINTS = {
   numberOfImages: {
     min: 1,
-    max: 8,
+    max: 4,
   },
   aspectRatios: ["1:1", "9:16", "16:9", "4:3", "3:4"],
   personGeneration: ["dont_allow", "allow_adult", "allow_all"],
