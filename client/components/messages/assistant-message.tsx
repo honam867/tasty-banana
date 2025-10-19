@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { useState } from "react";
+import { useState, memo } from "react";
 import Lightbox from "yet-another-react-lightbox";
 import "yet-another-react-lightbox/styles.css";
 
@@ -15,17 +15,21 @@ interface Image {
 interface AssistantMessageProps {
   content: string;
   images?: Image[];
+  status?: string;
+  disableAnimation?: boolean;
 }
 
-export function AssistantMessage({ content, images }: AssistantMessageProps) {
+export const AssistantMessage = memo(function AssistantMessage({ content, images, status, disableAnimation = false }: AssistantMessageProps) {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [photoIndex, setPhotoIndex] = useState(0);
+  
+  const isFailed = status === "failed";
 
   const slides = images?.map((img) => ({ src: img.url })) || [];
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10 }}
+      initial={disableAnimation ? { opacity: 1, y: 0 } : { opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, ease: "easeOut" }}
       className="flex gap-3 mb-6"
@@ -36,8 +40,14 @@ export function AssistantMessage({ content, images }: AssistantMessageProps) {
 
       <div className="flex-1 space-y-3">
         {content && (
-          <div className="bg-surface-2 px-4 py-3 rounded-2xl rounded-tl-none">
-            <p className="text-sm text-text whitespace-pre-wrap break-words">
+          <div className={`px-4 py-3 rounded-2xl rounded-tl-none ${
+            isFailed 
+              ? "bg-danger/10 border border-danger/30" 
+              : "bg-surface-2"
+          }`}>
+            <p className={`text-sm whitespace-pre-wrap break-words ${
+              isFailed ? "text-danger" : "text-text"
+            }`}>
               {content}
             </p>
           </div>
@@ -80,4 +90,4 @@ export function AssistantMessage({ content, images }: AssistantMessageProps) {
       )}
     </motion.div>
   );
-}
+});

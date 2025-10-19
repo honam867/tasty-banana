@@ -33,7 +33,7 @@ export default function BananaLoading({
   const trackRef = React.useRef<HTMLDivElement | null>(null);
   const rowRef = React.useRef<HTMLDivElement | null>(null);
 
-  const [distance, setDistance] = React.useState(0);
+  const [distance, setDistance] = React.useState(1000); // Start with default to avoid pause
   const [autoCount, setAutoCount] = React.useState(count);
 
   const bananas = React.useMemo(
@@ -56,13 +56,16 @@ export default function BananaLoading({
         const needed = Math.max(1, Math.ceil(trackEl.clientWidth / cell) + 1);
         setAutoCount(needed);
       }
-      requestAnimationFrame(() => {
-        const newRowEl = rowRef.current;
-        if (newRowEl) setDistance(newRowEl.scrollWidth);
-      });
+      
+      const newRowEl = rowRef.current;
+      if (newRowEl && newRowEl.scrollWidth > 0) {
+        setDistance(newRowEl.scrollWidth);
+      }
     };
 
+    // Update immediately
     update();
+    
     const ro = new ResizeObserver(update);
     if (trackRef.current) ro.observe(trackRef.current);
     if (rowRef.current) ro.observe(rowRef.current);
@@ -117,7 +120,6 @@ export default function BananaLoading({
           </div>
         ) : (
           <motion.div
-            key={distance}
             className="absolute left-0 top-1/2 flex -translate-y-1/2 will-change-transform"
             style={{ gap }}
             animate={{ x: [0, -distance] }}

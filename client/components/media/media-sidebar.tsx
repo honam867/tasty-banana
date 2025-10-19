@@ -188,6 +188,7 @@ export function MediaSidebar({ isCollapsed, setIsCollapsed }: MediaSidebarProps)
                   <Link
                     key={thread.id}
                     href={`/media/${thread.id}`}
+                    prefetch={true}
                     className={cn(
                       "flex items-center gap-3 p-3 rounded-lg hover:bg-surface-2 transition-colors group relative",
                       currentThreadId === thread.id &&

@@ -39,8 +39,9 @@ export default function ThreadPage() {
   const { socket, isConnected } = useSocket();
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [shouldAnimate, setShouldAnimate] = useState(false);
   const [generationConfig, setGenerationConfig] = useState<GenerationParams>(
     {}
   );
@@ -63,8 +64,15 @@ export default function ThreadPage() {
   };
 
   useEffect(() => {
+    // Reset state immediately for instant transition
+    setMessages([]);
+    setInputValue("");
+    setIsSending(false);
+    setShouldAnimate(false);
+
     const fetchMessages = async () => {
       setIsLoading(true);
+
       const result = await getMessages(threadId);
       if (result.success && result.data) {
         const fetchedMessages = result.data.items.reverse();
@@ -83,21 +91,26 @@ export default function ThreadPage() {
 
         if (isStillProcessing) {
           setIsSending(true);
+        } else {
+          setIsSending(false);
         }
       }
+
       setIsLoading(false);
     };
 
     fetchMessages();
+
+    // Enable animations after content loads
+    const timer = setTimeout(() => setShouldAnimate(true), 100);
+    return () => clearTimeout(timer);
   }, [threadId]);
 
   // WebSocket: Join/leave thread room
   useEffect(() => {
     if (isConnected && threadId) {
-      console.log("[Thread] Socket connected, joining thread:", threadId);
       joinThread(threadId);
       return () => {
-        console.log("[Thread] Leaving thread:", threadId);
         leaveThread(threadId);
       };
     } else {
@@ -116,8 +129,6 @@ export default function ThreadPage() {
       console.log("[Thread] No socket available for listeners");
       return;
     }
-
-    console.log("[Thread] Setting up socket event listeners");
 
     let isFetching = false;
     let pendingFetch = false;
@@ -170,10 +181,7 @@ export default function ThreadPage() {
     socket.on("message:update", handleMessageUpdate);
     socket.on("job:update", handleJobUpdate);
 
-    console.log("[Thread] Event listeners registered");
-
     return () => {
-      console.log("[Thread] Removing event listeners");
       socket.off("message:update", handleMessageUpdate);
       socket.off("job:update", handleJobUpdate);
     };
@@ -253,7 +261,7 @@ export default function ThreadPage() {
         className="flex-1 overflow-y-auto p-6 custom-scrollbar"
       >
         <div className="max-w-4xl mx-auto">
-          {isLoading ? (
+          {isLoading && messages.length === 0 ? (
             <div className="text-center py-12">
               <BananaLoading speed={4} />
             </div>
@@ -271,18 +279,22 @@ export default function ThreadPage() {
             </div>
           ) : (
             <div className="space-y-2">
-              {messages.map((message) =>
+              {messages.map((message, index) =>
                 message.role === "user" ? (
                   <MessageBubble
                     key={message.id}
                     content={message.content}
                     isUser={true}
+                    status={message.status}
+                    disableAnimation={!shouldAnimate}
                   />
                 ) : (
                   <AssistantMessage
                     key={message.id}
                     content={message.content}
                     images={message.images}
+                    status={message.status}
+                    disableAnimation={!shouldAnimate}
                   />
                 )
               )}

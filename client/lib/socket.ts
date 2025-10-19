@@ -41,7 +41,6 @@ export function getSocket(): Socket | null {
 export function connectSocket(): void {
   if (socket) {
     if (!socket.connected) {
-      console.log("[Socket] Attempting to connect...");
       socket.connect();
     } else {
       console.log("[Socket] Already connected");
@@ -60,13 +59,11 @@ export function disconnectSocket(): void {
 export function joinThread(threadId: string): void {
   if (socket?.connected) {
     socket.emit("join-thread", threadId);
-    console.log("[Socket] Joined thread:", threadId);
   }
 }
 
 export function leaveThread(threadId: string): void {
   if (socket?.connected) {
     socket.emit("leave-thread", threadId);
-    console.log("[Socket] Left thread:", threadId);
   }
 }
