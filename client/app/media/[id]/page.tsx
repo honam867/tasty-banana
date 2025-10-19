@@ -319,8 +319,8 @@ export default function ThreadPage() {
         </div>
       </div>
 
-      <footer className="flex-shrink-0 border-t border-border p-6">
-        <div className="max-w-4xl mx-auto">
+      <footer className="flex-shrink-0 border-t border-border p-6 flex items-center">
+        <div className="max-w-4xl mx-auto w-full">
           <GenerationConfig
             value={generationConfig}
             onChange={setGenerationConfig}

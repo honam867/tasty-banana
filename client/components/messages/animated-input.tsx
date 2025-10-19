@@ -38,12 +38,12 @@ export function AnimatedInput({
   return (
     <div className="relative">
       <div
-        // className={cn(
-        //   "relative rounded-xl transition-all duration-300",
-        //   isFocused
-        //     ? "animate-border-ring"
-        //     : "shadow-[0_0_15px_rgba(255,201,69,0.3)]"
-        // )}
+      // className={cn(
+      //   "relative rounded-xl transition-all duration-300",
+      //   isFocused
+      //     ? "animate-border-ring"
+      //     : "shadow-[0_0_15px_rgba(255,201,69,0.3)]"
+      // )}
       >
         <textarea
           value={value}
@@ -55,15 +55,18 @@ export function AnimatedInput({
           placeholder={placeholder}
           rows={1}
           className={cn(
-            " w-full px-4 pr-12 bg-surface-2 border-2 rounded-xl resize-none",
+            " w-full px-4 pr-12 bg-surface-2 border-2 rounded-xl resize-none overflow-hidden",
             "focus:outline-none transition-all duration-300",
-            "placeholder:text-text-dim text-sm md:text-base",
+            "placeholder:text-text-dim text-sm md:text-base leading-tight",
             disabled && "opacity-50 cursor-not-allowed",
-            isFocused
-              ? "border-primary"
-              : "border-transparent"
+            isFocused ? "border-primary" : "border-transparent"
           )}
-          style={{ height: "48px", lineHeight: "48px", paddingTop: 0, paddingBottom: 0, maxHeight: "120px" }}
+          style={{ 
+            height: "48px", 
+            maxHeight: "120px", 
+            paddingTop: "14px",
+            paddingBottom: "14px"
+          }}
         />
         <button
           onClick={onSubmit}
