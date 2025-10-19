@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { AnimatedBorderText } from "@/components/ui/animated-border-text";
 import { Sparkles, Zap, Palette, Image as ImageIcon } from "lucide-react";
 import { motion } from "framer-motion";
+import Link from "next/link";
 
 export default function Home() {
   return (
@@ -62,9 +63,11 @@ export default function Home() {
               transition={{ duration: 0.8, delay: 0.8, ease: "easeOut" }}
             >
               <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                <Button size="lg">
-                  Start Creating Free
-                </Button>
+                <Link href="/media">
+                  <Button size="lg">
+                    Start Creating Free
+                  </Button>
+                </Link>
               </motion.div>
               <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                 <Button variant="secondary" size="lg">
