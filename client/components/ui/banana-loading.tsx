@@ -168,7 +168,7 @@ export default function BananaLoading({
           </motion.div>
         )}
       </div>
-      <span>Loading...</span>
+      <span className="text-center">Loading...</span>
     </>
   );
 }

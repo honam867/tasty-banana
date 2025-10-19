@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { WelcomeScreen } from "@/components/media/welcome-screen";
 import { getThreads, createThread } from "@/lib/actions/threads";
+import BananaLoading from "@/components/ui/banana-loading";
 
 export default function MediaPage() {
   const router = useRouter();
@@ -33,7 +34,7 @@ export default function MediaPage() {
       // Dispatch event to refresh sidebar threads
       const event = new CustomEvent("refreshThreads");
       window.dispatchEvent(event);
-      
+
       router.push(`/media/${result.data.id}`);
     }
   };
@@ -41,7 +42,9 @@ export default function MediaPage() {
   if (isLoading) {
     return (
       <div className="h-screen flex items-center justify-center">
-        <p className="text-text-dim">Loading...</p>
+        <div className="w-full max-w-md text-center">
+          <BananaLoading speed={4}/>
+        </div>
       </div>
     );
   }

@@ -17,6 +17,7 @@ import {
 import { getThreads, createThread, deleteThread } from "@/lib/actions/threads";
 import { cn } from "@/lib/utils";
 import dayjs from "dayjs";
+import BananaLoading from "../ui/banana-loading";
 
 interface Thread {
   id: string;
@@ -31,7 +32,10 @@ interface MediaSidebarProps {
   setIsCollapsed: (collapsed: boolean) => void;
 }
 
-export function MediaSidebar({ isCollapsed, setIsCollapsed }: MediaSidebarProps) {
+export function MediaSidebar({
+  isCollapsed,
+  setIsCollapsed,
+}: MediaSidebarProps) {
   const { user } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
@@ -150,12 +154,26 @@ export function MediaSidebar({ isCollapsed, setIsCollapsed }: MediaSidebarProps)
         )}
       >
         <div className="h-16 border-b border-border flex items-center justify-center px-4">
-          <Link href="/" className={cn(
-            "flex items-center gap-2 group",
-            isCollapsed && "justify-center"
-          )}>
-            <span className={cn("animate-zoom-pulse", isCollapsed ? "text-2xl" : "text-3xl")}>🍌</span>
-            {!isCollapsed && <span className="text-xl font-heading font-bold">Tasty Banana</span>}
+          <Link
+            href="/"
+            className={cn(
+              "flex items-center gap-2 group",
+              isCollapsed && "justify-center"
+            )}
+          >
+            <span
+              className={cn(
+                "animate-zoom-pulse",
+                isCollapsed ? "text-2xl" : "text-3xl"
+              )}
+            >
+              🍌
+            </span>
+            {!isCollapsed && (
+              <span className="text-xl font-heading font-bold">
+                Tasty Banana
+              </span>
+            )}
           </Link>
         </div>
 
@@ -177,7 +195,9 @@ export function MediaSidebar({ isCollapsed, setIsCollapsed }: MediaSidebarProps)
             className="flex-1 overflow-y-auto px-2 pr-1 custom-scrollbar"
           >
             {isLoading ? (
-              <div className="text-center text-text-dim py-4">Loading...</div>
+              <div className="text-center text-text-dim py-4">
+                <BananaLoading speed={4} />
+              </div>
             ) : threads.length === 0 ? (
               <div className="text-center text-text-dim py-4 px-2 text-sm">
                 {isCollapsed ? "No threads" : "No threads yet"}
@@ -278,7 +298,10 @@ export function MediaSidebar({ isCollapsed, setIsCollapsed }: MediaSidebarProps)
               <ChevronRight size={20} className="text-text-dim flex-shrink-0" />
             ) : (
               <>
-                <ChevronLeft size={20} className="text-text-dim flex-shrink-0" />
+                <ChevronLeft
+                  size={20}
+                  className="text-text-dim flex-shrink-0"
+                />
                 <span className="text-sm text-text-dim">Collapse</span>
               </>
             )}
@@ -297,7 +320,10 @@ export function MediaSidebar({ isCollapsed, setIsCollapsed }: MediaSidebarProps)
           >
             <h3 className="text-xl font-heading font-bold mb-4">History</h3>
             <p className="text-text-dim mb-6">Building...</p>
-            <Button onClick={() => setShowHistoryPopup(false)} className="w-full">
+            <Button
+              onClick={() => setShowHistoryPopup(false)}
+              className="w-full"
+            >
               Close
             </Button>
           </div>
