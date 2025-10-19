@@ -4,9 +4,11 @@ dotenv.config();
 import express from "express";
 import cors from "cors";
 import path from "path";
+import { createServer } from "http";
 
 import db from "./config/db/index.js";
 import route from "./routes/index.js";
+import { initializeSocket } from "./config/socket.js";
 
 import { fileURLToPath } from "url";
 import { dirname } from "path";
@@ -17,6 +19,10 @@ const PORT = process.env.PORT
 const BASE_URL = process.env.BASE_URL
 
 const app = express()
+const httpServer = createServer(app);
+
+// Initialize Socket.IO
+initializeSocket(httpServer);
 
 db.connect();
 app.use(express.static(path.join(__dirname, "public")));
@@ -30,4 +36,4 @@ app.use(
 
 route(app);
 
-app.listen(PORT, () => console.log(`Server listening at ${BASE_URL}:${PORT}`));
+httpServer.listen(PORT, () => console.log(`Server listening at ${BASE_URL}:${PORT}`));

@@ -6,9 +6,13 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { getMessages, sendMessage } from "@/lib/actions/messages";
 import { MessageBubble } from "@/components/messages/message-bubble";
 import { AssistantMessage } from "@/components/messages/assistant-message";
+import { LoadingMessage } from "@/components/messages/loading-message";
 import { AnimatedInput } from "@/components/messages/animated-input";
 import { GenerationConfig } from "@/components/messages/generation-config";
 import type { GenerationParams } from "@/lib/constants/generation";
+import { useSocket } from "@/components/providers/socket-provider";
+import { joinThread, leaveThread } from "@/lib/socket";
+import BananaLoading from "@/components/ui/banana-loading";
 
 interface Image {
   id: string;
@@ -32,21 +36,27 @@ interface Message {
 export default function ThreadPage() {
   const params = useParams();
   const threadId = params.id as string;
+  const { socket, isConnected } = useSocket();
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
-  const [generationConfig, setGenerationConfig] = useState<GenerationParams>({});
+  const [generationConfig, setGenerationConfig] = useState<GenerationParams>(
+    {}
+  );
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const lastMessage = messages[messages.length - 1];
-  const isProcessing = 
-    lastMessage?.role === "user" && 
-    (lastMessage?.status === "pending" || lastMessage?.status === "processing") ||
-    (lastMessage?.role === "assistant" && 
-     (lastMessage?.status === "pending" || lastMessage?.status === "processing" || lastMessage?.status === "queued"));
+  const isProcessing =
+    (lastMessage?.role === "user" &&
+      (lastMessage?.status === "pending" ||
+        lastMessage?.status === "processing")) ||
+    (lastMessage?.role === "assistant" &&
+      (lastMessage?.status === "pending" ||
+        lastMessage?.status === "processing" ||
+        lastMessage?.status === "queued"));
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -59,19 +69,20 @@ export default function ThreadPage() {
       if (result.success && result.data) {
         const fetchedMessages = result.data.items.reverse();
         setMessages(fetchedMessages);
-        
+
         // Check if the last message is still processing
         const lastMsg = fetchedMessages[fetchedMessages.length - 1];
-        const isStillProcessing = 
-          (lastMsg?.role === "user" && 
-           (lastMsg?.status === "pending" || lastMsg?.status === "processing")) ||
-          (lastMsg?.role === "assistant" && 
-           (lastMsg?.status === "pending" || lastMsg?.status === "processing" || lastMsg?.status === "queued"));
-        
-        // If still processing, start polling
+        const isStillProcessing =
+          (lastMsg?.role === "user" &&
+            (lastMsg?.status === "pending" ||
+              lastMsg?.status === "processing")) ||
+          (lastMsg?.role === "assistant" &&
+            (lastMsg?.status === "pending" ||
+              lastMsg?.status === "processing" ||
+              lastMsg?.status === "queued"));
+
         if (isStillProcessing) {
           setIsSending(true);
-          startPolling();
         }
       }
       setIsLoading(false);
@@ -80,38 +91,97 @@ export default function ThreadPage() {
     fetchMessages();
   }, [threadId]);
 
+  // WebSocket: Join/leave thread room
+  useEffect(() => {
+    if (isConnected && threadId) {
+      console.log("[Thread] Socket connected, joining thread:", threadId);
+      joinThread(threadId);
+      return () => {
+        console.log("[Thread] Leaving thread:", threadId);
+        leaveThread(threadId);
+      };
+    } else {
+      console.log(
+        "[Thread] Socket not connected yet. isConnected:",
+        isConnected,
+        "threadId:",
+        threadId
+      );
+    }
+  }, [isConnected, threadId]);
+
+  // WebSocket: Listen for message updates
+  useEffect(() => {
+    if (!socket) {
+      console.log("[Thread] No socket available for listeners");
+      return;
+    }
+
+    console.log("[Thread] Setting up socket event listeners");
+
+    let isFetching = false;
+    let pendingFetch = false;
+
+    const fetchMessagesDebounced = async () => {
+      if (isFetching) {
+        pendingFetch = true;
+        return;
+      }
+
+      isFetching = true;
+      const result = await getMessages(threadId);
+      if (result.success && result.data) {
+        setMessages(result.data.items.reverse());
+      }
+      isFetching = false;
+
+      if (pendingFetch) {
+        pendingFetch = false;
+        setTimeout(() => fetchMessagesDebounced(), 100);
+      }
+    };
+
+    const handleMessageUpdate = async (data: any) => {
+      console.log("[Socket] ✅ Received message:update event:", data);
+
+      // If message succeeded or failed, stop sending state
+      if (data.status === "succeeded" || data.status === "failed") {
+        console.log("[Socket] Message completed, stopping sending state");
+        setIsSending(false);
+      }
+
+      // Only fetch on final status to avoid flickering
+      if (data.status === "succeeded" || data.status === "failed") {
+        await fetchMessagesDebounced();
+      }
+    };
+
+    const handleJobUpdate = async (data: any) => {
+      console.log("[Socket] ✅ Received job:update event:", data);
+
+      // If job succeeded or failed, stop sending state and refresh messages
+      if (data.status === "succeeded" || data.status === "failed") {
+        console.log("[Socket] Job completed, stopping sending state");
+        setIsSending(false);
+        await fetchMessagesDebounced();
+      }
+    };
+
+    socket.on("message:update", handleMessageUpdate);
+    socket.on("job:update", handleJobUpdate);
+
+    console.log("[Thread] Event listeners registered");
+
+    return () => {
+      console.log("[Thread] Removing event listeners");
+      socket.off("message:update", handleMessageUpdate);
+      socket.off("job:update", handleJobUpdate);
+    };
+  }, [socket, threadId]);
+
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
-
-  const startPolling = useCallback(() => {
-    const pollInterval = setInterval(async () => {
-      const messagesResult = await getMessages(threadId);
-      if (messagesResult.success && messagesResult.data) {
-        const latestMessages = messagesResult.data.items.reverse();
-        const lastMessage = latestMessages[latestMessages.length - 1];
-
-        if (lastMessage && lastMessage.role === "assistant" && lastMessage.status === "succeeded") {
-          setMessages(latestMessages);
-          clearInterval(pollInterval);
-          setIsSending(false);
-        } else if (lastMessage && lastMessage.status === "failed") {
-          setMessages(latestMessages);
-          clearInterval(pollInterval);
-          setIsSending(false);
-        } else {
-          setMessages(latestMessages);
-        }
-      }
-    }, 2000);
-
-    setTimeout(() => {
-      clearInterval(pollInterval);
-      setIsSending(false);
-    }, 60000);
-
-    return pollInterval;
-  }, [threadId]);
 
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isSending || isProcessing) return;
@@ -130,32 +200,25 @@ export default function ThreadPage() {
     setInputValue("");
     setIsSending(true);
 
-    const params = (generationConfig.numberOfImages || generationConfig.aspectRatio) 
-      ? generationConfig 
-      : undefined;
+    const params =
+      generationConfig.numberOfImages || generationConfig.aspectRatio
+        ? generationConfig
+        : undefined;
 
     const result = await sendMessage(threadId, userMessage.content, params);
 
     if (result.success && result.data) {
-      setMessages((prev) =>
-        prev.filter((msg) => msg.id !== userMessage.id)
-      );
-
-      const fetchUpdatedMessages = async () => {
-        const messagesResult = await getMessages(threadId);
-        if (messagesResult.success && messagesResult.data) {
-          setMessages(messagesResult.data.items.reverse());
-        }
-      };
-
-      await fetchUpdatedMessages();
-      startPolling();
+      // Fetch updated messages WITHOUT removing temp message first
+      // This prevents flickering - the fetch will replace the entire list smoothly
+      const messagesResult = await getMessages(threadId);
+      if (messagesResult.success && messagesResult.data) {
+        setMessages(messagesResult.data.items.reverse());
+      }
+      // WebSocket will handle updates automatically, no need to poll
     } else {
       setMessages((prev) =>
         prev.map((msg) =>
-          msg.id === userMessage.id
-            ? { ...msg, status: "failed" }
-            : msg
+          msg.id === userMessage.id ? { ...msg, status: "failed" } : msg
         )
       );
       setIsSending(false);
@@ -179,7 +242,9 @@ export default function ThreadPage() {
         </div>
         <div>
           <h1 className="font-heading font-bold">AI Media Generation</h1>
-          <p className="text-xs text-text-dim">Generate stunning images with AI</p>
+          <p className="text-xs text-text-dim">
+            Generate stunning images with AI
+          </p>
         </div>
       </header>
 
@@ -190,7 +255,7 @@ export default function ThreadPage() {
         <div className="max-w-4xl mx-auto">
           {isLoading ? (
             <div className="text-center py-12">
-              <p className="text-text-dim">Loading messages...</p>
+              <BananaLoading speed={4} />
             </div>
           ) : messages.length === 0 ? (
             <div className="text-center py-12">

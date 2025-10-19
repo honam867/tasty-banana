@@ -4,6 +4,7 @@ const { get, isEmpty, isNil } = lodash;
 import { db } from "../db/drizzle.js";
 import { jobs, images, messages } from "../db/schema.js";
 import { eq } from "drizzle-orm";
+import { emitJobUpdate, emitMessageUpdate } from "../config/socket.js";
 import {
   JOB_STATUS,
   JOB_ERROR_CODE,
@@ -128,6 +129,32 @@ const updateJobStatusInDb = async (jobId, newStatus, currentStatus = null) => {
   }
 
   console.log(`✅ Updated job ${jobId} status: ${currentStatus || '?'} → ${newStatus}`);
+  
+  // Emit socket event for real-time updates
+  try {
+    // Fetch the job with its associated message to get threadId
+    const [jobWithMessage] = await db
+      .select({
+        jobId: jobs.id,
+        messageId: jobs.messageId,
+        threadId: messages.threadId,
+      })
+      .from(jobs)
+      .innerJoin(messages, eq(jobs.messageId, messages.id))
+      .where(eq(jobs.id, jobId))
+      .limit(1);
+
+    if (jobWithMessage) {
+      emitJobUpdate(
+        jobWithMessage.threadId,
+        jobWithMessage.messageId,
+        updatedJob
+      );
+    }
+  } catch (socketError) {
+    console.warn(`⚠️ Failed to emit socket event for job ${jobId}:`, get(socketError, "message"));
+  }
+  
   return updatedJob;
 };
 
