@@ -30,6 +30,10 @@ export default function MediaPage() {
   const handleCreateThread = async () => {
     const result = await createThread();
     if (result.success && result.data) {
+      // Dispatch event to refresh sidebar threads
+      const event = new CustomEvent("refreshThreads");
+      window.dispatchEvent(event);
+      
       router.push(`/media/${result.data.id}`);
     }
   };

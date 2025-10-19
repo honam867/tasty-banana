@@ -70,6 +70,17 @@ export function MediaSidebar({ isCollapsed, setIsCollapsed }: MediaSidebarProps)
     fetchThreads();
   }, [fetchThreads]);
 
+  useEffect(() => {
+    const handleRefreshThreads = () => {
+      fetchThreads();
+    };
+
+    window.addEventListener("refreshThreads", handleRefreshThreads);
+    return () => {
+      window.removeEventListener("refreshThreads", handleRefreshThreads);
+    };
+  }, [fetchThreads]);
+
   const handleScroll = useCallback(() => {
     const container = scrollContainerRef.current;
     if (!container || !nextCursor || isLoadingMore) return;
