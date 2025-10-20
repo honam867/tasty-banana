@@ -57,7 +57,7 @@ export function AnimatedInput({
           className={cn(
             " w-full px-4 pr-12 bg-surface-2 border-2 rounded-xl resize-none overflow-hidden",
             "focus:outline-none transition-all duration-300",
-            "placeholder:text-text-dim text-sm md:text-base leading-tight",
+            "placeholder:text-text-dim text-base leading-tight",
             disabled && "opacity-50 cursor-not-allowed",
             isFocused ? "border-primary" : "border-transparent"
           )}
@@ -65,7 +65,8 @@ export function AnimatedInput({
             height: "48px", 
             maxHeight: "120px", 
             paddingTop: "14px",
-            paddingBottom: "14px"
+            paddingBottom: "14px",
+            fontSize: "16px"
           }}
         />
         <button
