@@ -13,6 +13,8 @@ import {
   User,
   ChevronLeft,
   ChevronRight,
+  Settings,
+  LogOut,
 } from "lucide-react";
 import { getThreads, createThread, deleteThread } from "@/lib/actions/threads";
 import { cn } from "@/lib/utils";
@@ -36,7 +38,7 @@ export function MediaSidebar({
   isCollapsed,
   setIsCollapsed,
 }: MediaSidebarProps) {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const [threads, setThreads] = useState<Thread[]>([]);
@@ -44,7 +46,10 @@ export function MediaSidebar({
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [showHistoryPopup, setShowHistoryPopup] = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const profileSectionRef = useRef<HTMLDivElement>(null);
 
   const currentThreadId = pathname.split("/media/")[1] || null;
 
@@ -103,6 +108,37 @@ export function MediaSidebar({
     }
   }, [handleScroll]);
 
+  useEffect(() => {
+    if (!showProfileMenu) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        profileSectionRef.current &&
+        !profileSectionRef.current.contains(event.target as Node)
+      ) {
+        setShowProfileMenu(false);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setShowProfileMenu(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [showProfileMenu]);
+
+  useEffect(() => {
+    setShowProfileMenu(false);
+  }, [isCollapsed]);
+
   const handleCreateThread = async () => {
     const result = await createThread();
     if (result.success && result.data) {
@@ -127,6 +163,28 @@ export function MediaSidebar({
           router.push("/media");
         }
       }
+    }
+  };
+
+  const collapseOnThreadSelect = () => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    setShowProfileMenu(false);
+
+    const shouldCollapse = window.matchMedia("(max-width: 1023px)").matches;
+    if (shouldCollapse) {
+      setIsCollapsed(true);
+    }
+  };
+
+  const handleLogout = async () => {
+    setShowProfileMenu(false);
+    try {
+      await logout();
+    } catch (error) {
+      console.error("[Sidebar] Failed to logout", error);
     }
   };
 
@@ -210,6 +268,7 @@ export function MediaSidebar({
                     key={thread.id}
                     href={`/media/${thread.id}`}
                     prefetch={true}
+                    onClick={collapseOnThreadSelect}
                     className={cn(
                       "flex items-center gap-3 p-3 rounded-lg hover:bg-surface-2 transition-colors group relative",
                       currentThreadId === thread.id &&
@@ -272,18 +331,63 @@ export function MediaSidebar({
           </button>
 
           <div
+            ref={profileSectionRef}
             className={cn(
-              "flex items-center gap-3 p-4 border-t border-border",
-              isCollapsed && "justify-center"
+              "relative border-t border-border",
+              isCollapsed && "flex justify-center"
             )}
           >
-            <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
-              <User size={16} className="text-primary" />
-            </div>
-            {!isCollapsed && user && (
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{user.username}</p>
-                <p className="text-xs text-text-dim truncate">{user.email}</p>
+            <button
+              type="button"
+              onClick={() => setShowProfileMenu((prev) => !prev)}
+              className={cn(
+                "w-full flex items-center gap-3 p-4 hover:bg-surface-2 transition-colors",
+                isCollapsed && "justify-center"
+              )}
+            >
+              <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
+                <User size={16} className="text-primary" />
+              </div>
+              {!isCollapsed && (
+                <div className="flex-1 min-w-0 text-left">
+                  <p className="text-sm font-medium truncate">
+                    {user?.username ?? "Account"}
+                  </p>
+                  <p className="text-xs text-text-dim truncate">
+                    {user?.email ?? "Manage your workspace"}
+                  </p>
+                </div>
+              )}
+            </button>
+
+            {showProfileMenu && (
+              <div
+                className={cn(
+                  "absolute z-50 bg-surface-2 border border-border rounded-lg shadow-xl py-2",
+                  isCollapsed
+                    ? "left-[calc(100%+0.75rem)] bottom-2 w-48"
+                    : "left-4 right-4 bottom-[calc(100%+0.75rem)]"
+                )}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowProfileMenu(false);
+                    setShowSettingsModal(true);
+                  }}
+                  className="flex w-full items-center gap-3 px-4 py-2 text-sm text-text hover:bg-surface transition-colors"
+                >
+                  <Settings size={16} className="text-text-dim" />
+                  <span>Settings</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="flex w-full items-center gap-3 px-4 py-2 text-sm text-danger hover:bg-danger/10 transition-colors"
+                >
+                  <LogOut size={16} />
+                  <span>Log out</span>
+                </button>
               </div>
             )}
           </div>
@@ -309,6 +413,27 @@ export function MediaSidebar({
           </button>
         </div>
       </aside>
+
+      {showSettingsModal && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          onClick={() => setShowSettingsModal(false)}
+        >
+          <div
+            className="bg-surface rounded-lg p-6 max-w-md w-full mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-xl font-heading font-bold mb-4">Settings</h3>
+            <p className="text-text-dim mb-6">Building...</p>
+            <Button
+              onClick={() => setShowSettingsModal(false)}
+              className="w-full"
+            >
+              Close
+            </Button>
+          </div>
+        </div>
+      )}
 
       {showHistoryPopup && (
         <div

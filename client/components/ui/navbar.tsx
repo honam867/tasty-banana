@@ -5,11 +5,15 @@ import Link from "next/link";
 import { useAuth } from "@/components/providers/auth-provider";
 import { User, LogOut } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
+import type { MouseEvent as ReactMouseEvent } from "react";
+import { useRouter, usePathname } from "next/navigation";
 
 export function Navbar() {
   const { user, logout } = useAuth();
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -27,6 +31,31 @@ export function Navbar() {
     };
   }, [showDropdown]);
 
+  const handleInPageNav = (event: ReactMouseEvent<HTMLAnchorElement>, targetId: string) => {
+    event.preventDefault();
+    setShowDropdown(false);
+
+    if (pathname !== "/") {
+      router.push(`/#${targetId}`);
+      return;
+    }
+
+    if (typeof window === "undefined") return;
+
+    const element = document.getElementById(targetId);
+    if (!element) return;
+
+    const navHeight = 72;
+    const offset = element.getBoundingClientRect().top + window.scrollY - navHeight;
+
+    window.scrollTo({
+      top: offset > 0 ? offset : 0,
+      behavior: "smooth",
+    });
+
+    window.history.replaceState(null, "", `/#${targetId}`);
+  };
+
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl bg-surface/80 border-b border-border h-16">
       <div className="max-w-7xl mx-auto px-6 h-full flex items-center justify-between">
@@ -36,13 +65,25 @@ export function Navbar() {
         </Link>
 
         <div className="hidden md:flex items-center gap-8">
-          <Link href="#features" className="text-text-dim hover:text-text transition-colors">
+          <Link
+            href="/#features"
+            className="text-text-dim hover:text-text transition-colors"
+            onClick={(event) => handleInPageNav(event, "features")}
+          >
             Features
           </Link>
-          <Link href="#pricing" className="text-text-dim hover:text-text transition-colors">
+          <Link
+            href="/#pricing"
+            className="text-text-dim hover:text-text transition-colors"
+            onClick={(event) => handleInPageNav(event, "pricing")}
+          >
             Pricing
           </Link>
-          <Link href="#about" className="text-text-dim hover:text-text transition-colors">
+          <Link
+            href="/#about"
+            className="text-text-dim hover:text-text transition-colors"
+            onClick={(event) => handleInPageNav(event, "about")}
+          >
             About
           </Link>
         </div>

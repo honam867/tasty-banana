@@ -7,7 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { AnimatedBorderText } from "@/components/ui/animated-border-text";
-import { Sparkles, Zap, Palette, Image as ImageIcon } from "lucide-react";
+import {
+  Sparkles,
+  MessageSquare,
+  ImagePlus,
+  Wand2,
+  Mail,
+  Phone,
+} from "lucide-react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 
@@ -90,7 +97,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="py-24 px-6">
+        <section id="features" className="py-24 px-6">
           <div className="max-w-7xl mx-auto">
             <motion.div 
               className="text-center mb-16"
@@ -100,10 +107,10 @@ export default function Home() {
               transition={{ duration: 0.8, ease: "easeOut" }}
             >
               <h2 className="text-3xl md:text-5xl font-heading font-bold mb-4">
-                Powerful Features
+                Flexible AI Features
               </h2>
               <p className="text-text-dim text-lg">
-                Everything you need to bring your imagination to life
+                Designed around how teams brief, iterate, and perfect visual ideas
               </p>
             </motion.div>
 
@@ -115,14 +122,14 @@ export default function Home() {
                 transition={{ duration: 0.6, delay: 0.1 }}
                 whileHover={{ y: -8 }}
               >
-                <Card>
+                <Card className="h-full">
                   <CardHeader>
                     <div className="w-12 h-12 rounded-[10px] bg-accent-mint/10 flex items-center justify-center mb-4">
-                      <Zap className="w-6 h-6 text-accent-mint" />
+                      <MessageSquare className="w-6 h-6 text-accent-mint" />
                     </div>
-                    <CardTitle>Lightning Fast</CardTitle>
+                    <CardTitle>Conversational Creation</CardTitle>
                     <CardDescription>
-                      Generate high-quality images in seconds, not minutes
+                      Chat with the model to co-create visuals in real time. Describe, iterate, and refine artwork exactly the way you speak.
                     </CardDescription>
                   </CardHeader>
                 </Card>
@@ -135,14 +142,14 @@ export default function Home() {
                 transition={{ duration: 0.6, delay: 0.2 }}
                 whileHover={{ y: -8 }}
               >
-                <Card>
+                <Card className="h-full">
                   <CardHeader>
                     <div className="w-12 h-12 rounded-[10px] bg-accent-sky/10 flex items-center justify-center mb-4">
-                      <Palette className="w-6 h-6 text-accent-sky" />
+                      <ImagePlus className="w-6 h-6 text-accent-sky" />
                     </div>
-                    <CardTitle>Style Control</CardTitle>
+                    <CardTitle>Reference Aware Editing</CardTitle>
                     <CardDescription>
-                      Fine-tune every aspect with advanced style parameters
+                      Drop in existing images to guide edits, remixes, and variations without losing brand or concept consistency.
                     </CardDescription>
                   </CardHeader>
                 </Card>
@@ -155,14 +162,14 @@ export default function Home() {
                 transition={{ duration: 0.6, delay: 0.3 }}
                 whileHover={{ y: -8 }}
               >
-                <Card>
+                <Card className="h-full">
                   <CardHeader>
                     <div className="w-12 h-12 rounded-[10px] bg-accent-orchid/10 flex items-center justify-center mb-4">
-                      <ImageIcon className="w-6 h-6 text-accent-orchid" />
+                      <Wand2 className="w-6 h-6 text-accent-orchid" />
                     </div>
-                    <CardTitle>HD Quality</CardTitle>
+                    <CardTitle>Prompt Enhancer</CardTitle>
                     <CardDescription>
-                      Export in multiple resolutions up to 4K quality
+                      Automatically enrich inputs with stylistic cues, camera language, and detail so every prompt lands perfectly.
                     </CardDescription>
                   </CardHeader>
                 </Card>
@@ -171,7 +178,88 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="py-24 px-6 relative overflow-hidden">
+        <section id="pricing" className="py-24 px-6 bg-surface">
+          <div className="max-w-6xl mx-auto grid gap-10 md:grid-cols-[1.1fr_0.9fr] items-center">
+            <motion.div
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, amount: 0.3 }}
+              transition={{ duration: 0.8, ease: "easeOut" }}
+              className="space-y-6"
+            >
+              <h2 className="text-3xl md:text-5xl font-heading font-bold">
+                Pricing that scales with your creative flow
+              </h2>
+              <p className="text-text-dim text-lg">
+                Every studio runs differently. Tell us how many teammates, projects, or brand guardrails you juggle and we’ll tailor a plan that fits.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-4">
+                <Button size="lg" className="gap-2">
+                  <Mail className="w-4 h-4" />
+                  Talk to sales
+                </Button>
+                <Button variant="secondary" size="lg" className="gap-2">
+                  <Phone className="w-4 h-4" />
+                  Book a call
+                </Button>
+              </div>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, amount: 0.3 }}
+              transition={{ duration: 0.8, delay: 0.2, ease: "easeOut" }}
+            >
+              <Card className="shadow-glow">
+                <CardHeader>
+                  <CardTitle>Let’s tailor a plan</CardTitle>
+                  <CardDescription>
+                    Share your workflow, volumes, and stakeholders. We respond within one business day.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="p-4 rounded-lg bg-surface-2 border border-border/60">
+                      <p className="text-sm text-text-dim mb-1 uppercase tracking-wide">
+                        Collaboration
+                      </p>
+                      <p className="text-base font-medium text-text">
+                        Shared threads, feedback-ready previews, and approvals.
+                      </p>
+                    </div>
+                    <div className="p-4 rounded-lg bg-surface-2 border border-border/60">
+                      <p className="text-sm text-text-dim mb-1 uppercase tracking-wide">
+                        Controls
+                      </p>
+                      <p className="text-base font-medium text-text">
+                        Usage limits, watermarking, and brand-safe defaults.
+                      </p>
+                    </div>
+                    <div className="p-4 rounded-lg bg-surface-2 border border-border/60">
+                      <p className="text-sm text-text-dim mb-1 uppercase tracking-wide">
+                        Support
+                      </p>
+                      <p className="text-base font-medium text-text">
+                        Dedicated onboarding and in-product prompt coaching.
+                      </p>
+                    </div>
+                    <div className="p-4 rounded-lg bg-surface-2 border border-border/60">
+                      <p className="text-sm text-text-dim mb-1 uppercase tracking-wide">
+                        Security
+                      </p>
+                      <p className="text-base font-medium text-text">
+                        Private deployments with audit logs and SSO options.
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          </div>
+        </section>
+
+        <section id="about" className="py-24 px-6 relative overflow-hidden">
           <motion.div 
             className="absolute inset-0 bg-gradient-radial from-primary/5 via-transparent to-transparent"
             initial={{ opacity: 0 }}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -22,10 +22,40 @@ export function AnimatedInput({
   onFocus,
 }: AnimatedInputProps) {
   const [isFocused, setIsFocused] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const MAX_TEXTAREA_HEIGHT = 200;
+
+  const adjustTextareaHeight = () => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    textarea.style.height = "auto";
+    textarea.style.minHeight = "48px";
+    textarea.style.maxHeight = `${MAX_TEXTAREA_HEIGHT}px`;
+    const nextHeight = Math.min(textarea.scrollHeight, MAX_TEXTAREA_HEIGHT);
+    textarea.style.height = `${nextHeight}px`;
+    textarea.style.overflowY =
+      textarea.scrollHeight > MAX_TEXTAREA_HEIGHT ? "auto" : "hidden";
+  };
+
+  useEffect(() => {
+    adjustTextareaHeight();
+  }, [value]);
 
   const handleFocus = () => {
     setIsFocused(true);
+    adjustTextareaHeight();
     onFocus?.();
+  };
+
+  const handleBlur = () => {
+    setIsFocused(false);
+    if (!value.trim()) {
+      const textarea = textareaRef.current;
+      if (textarea) {
+        textarea.style.height = "48px";
+      }
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -46,27 +76,31 @@ export function AnimatedInput({
       // )}
       >
         <textarea
+          ref={textareaRef}
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => {
+            onChange(e.target.value);
+            adjustTextareaHeight();
+          }}
           onKeyDown={handleKeyDown}
           onFocus={handleFocus}
-          onBlur={() => setIsFocused(false)}
+          onBlur={handleBlur}
           disabled={disabled}
           placeholder={placeholder}
           rows={1}
           className={cn(
-            " w-full px-4 pr-12 bg-surface-2 border-2 rounded-xl resize-none overflow-hidden",
+            "w-full px-4 pr-12 bg-surface-2 border-2 rounded-xl resize-none overflow-y-auto",
             "focus:outline-none transition-all duration-300",
-            "placeholder:text-text-dim text-base leading-tight",
+            "placeholder:text-text-dim text-base leading-6",
             disabled && "opacity-50 cursor-not-allowed",
             isFocused ? "border-primary" : "border-transparent"
           )}
-          style={{ 
-            height: "48px", 
-            maxHeight: "120px", 
+          style={{
+            height: "48px",
+            maxHeight: `${MAX_TEXTAREA_HEIGHT}px`,
             paddingTop: "14px",
             paddingBottom: "14px",
-            fontSize: "16px"
+            fontSize: "16px",
           }}
         />
         <button
