@@ -50,4 +50,73 @@ export const findUploadsByUserId = async (userId, limit = 50) => {
   return result || [];
 };
 
+/**
+ * Find reference images by user ID
+ * @param {string} userId - User ID (UUID)
+ * @param {number} limit - Maximum number of results (default: 50)
+ * @returns {Promise<Array>} Array of reference image upload records
+ */
+export const findReferenceImagesByUserId = async (userId, limit = 50) => {
+  const { and } = await import("drizzle-orm");
+  const result = await db
+    .select()
+    .from(uploads)
+    .where(
+      and(
+        eq(uploads.userId, userId),
+        eq(uploads.purpose, "reference")
+      )
+    )
+    .orderBy(uploads.createdAt)
+    .limit(limit);
+  return result || [];
+};
+
+/**
+ * Find reference images by thread ID
+ * @param {string} threadId - Thread ID (UUID)
+ * @param {number} limit - Maximum number of results (default: 50)
+ * @returns {Promise<Array>} Array of reference image upload records
+ */
+export const findReferenceImagesByThreadId = async (threadId, limit = 50) => {
+  const { and } = await import("drizzle-orm");
+  const result = await db
+    .select()
+    .from(uploads)
+    .where(
+      and(
+        eq(uploads.threadId, threadId),
+        eq(uploads.purpose, "reference")
+      )
+    )
+    .orderBy(uploads.createdAt)
+    .limit(limit);
+  return result || [];
+};
+
+/**
+ * Validate upload ownership
+ * @param {string} uploadId - Upload ID (UUID)
+ * @param {string} userId - User ID (UUID)
+ * @returns {Promise<boolean>} True if user owns the upload
+ */
+export const isUploadOwnedByUser = async (uploadId, userId) => {
+  const upload = await findUploadById(uploadId);
+  if (!upload) return false;
+  return upload.userId === userId;
+};
+
+/**
+ * Delete an upload record from database
+ * @param {string} uploadId - Upload ID (UUID)
+ * @returns {Promise<Object|null>} Deleted upload record or null
+ */
+export const deleteUpload = async (uploadId) => {
+  const result = await db
+    .delete(uploads)
+    .where(eq(uploads.id, uploadId))
+    .returning();
+  return get(result, "[0]", null);
+};
+
 

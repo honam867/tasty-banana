@@ -1,9 +1,15 @@
 import express from "express";
-import { uploadFile } from "../controllers/uploads.controller.js";
+import { uploadFile, getUserUploads, removeUpload } from "../controllers/uploads.controller.js";
 import { verifyToken } from "../middlewares/tokenHandler.js";
 import upload, { requireFile, handleMulterError } from "../config/multer.js";
 
 const router = express.Router();
+
+// GET /api/uploads - Get all uploads for authenticated user
+router.get("/", verifyToken, getUserUploads);
+
+// DELETE /api/uploads/:uploadId - Remove an upload for authenticated user
+router.delete("/:uploadId", verifyToken, removeUpload);
 
 // POST /api/uploads - Upload a file to R2
 // Middleware chain:
