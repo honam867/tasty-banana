@@ -27,6 +27,10 @@ import {
   createFailureResult,
   createSuccessResult,
 } from "../utils/job-utils.js";
+import { generateImageWithReference, upscaleImage } from "./gemini.service.js";
+import { findUploadById } from "./uploads.service.js";
+import { prepareReferenceImage } from "../utils/image-utils.js";
+import { GENERATION_MODE } from "../utils/constant.js";
 
 // ============================================================================
 // Internal Helper Functions
@@ -175,20 +179,86 @@ const executeImageGeneration = async (parameters, jobId) => {
     );
   }
 
-  const generationParams = {
+  const generationMode = get(parameters, "generationMode", GENERATION_MODE.TEXT2IMG);
+  const referenceImageId = get(parameters, "referenceImageId");
+
+  // Check if this is an image-to-image operation
+  const isImg2Img = generationMode !== GENERATION_MODE.TEXT2IMG && !isNil(referenceImageId);
+
+  let generationParams = {
     prompt,
     numberOfImages: get(parameters, "numberOfImages", 1),
     aspectRatio: get(parameters, "aspectRatio", "1:1"),
     seed: get(parameters, "seed"),
   };
 
-  console.log(`   Generating images with prompt: "${prompt.substring(0, 50)}..."`);
+  let result;
 
-  const result = await withTimeout(
-    () => generateImage(generationParams),
-    JOB_TIMEOUT.GENERATION,
-    "Image generation"
-  );
+  if (isImg2Img) {
+    // Fetch and prepare reference image
+    console.log(`   Loading reference image: ${referenceImageId}`);
+    const referenceUpload = await findUploadById(referenceImageId);
+    
+    if (isNil(referenceUpload)) {
+      throw new JobError(
+        `Reference image not found: ${referenceImageId}`,
+        JOB_ERROR_CODE.INVALID_INPUT,
+        404,
+        { jobId, referenceImageId }
+      );
+    }
+
+    const referenceImageBase64 = await prepareReferenceImage(get(referenceUpload, "storageKey"));
+
+    // Handle different generation modes
+    if (generationMode === GENERATION_MODE.UPSCALE) {
+      // Upscale mode
+      const upscaleFactor = get(parameters, "upscaleFactor", 2);
+      console.log(`   Upscaling image with factor: ${upscaleFactor}x`);
+      
+      result = await withTimeout(
+        () => upscaleImage({
+          referenceImageBase64,
+          upscaleFactor,
+        }),
+        JOB_TIMEOUT.GENERATION,
+        "Image upscaling"
+      );
+      
+      generationParams = { ...generationParams, upscaleFactor, referenceImageId };
+    } else {
+      // Image-to-image modes: style_transfer, variation, edit
+      const modeMap = {
+        [GENERATION_MODE.STYLE_TRANSFER]: "style_transfer",
+        [GENERATION_MODE.VARIATION]: "variation",
+        [GENERATION_MODE.EDIT]: "edit",
+      };
+      
+      const apiMode = modeMap[generationMode] || "edit";
+      console.log(`   Generating images with mode: ${apiMode}, prompt: "${prompt.substring(0, 50)}..."`);
+      
+      result = await withTimeout(
+        () => generateImageWithReference({
+          ...generationParams,
+          referenceImageBase64,
+          mode: apiMode,
+        }),
+        JOB_TIMEOUT.GENERATION,
+        "Image-to-image generation"
+      );
+      
+      generationParams = { ...generationParams, generationMode, referenceImageId };
+    }
+  } else {
+    // Standard text-to-image generation
+    console.log(`   Generating images with prompt: "${prompt.substring(0, 50)}..."`);
+    
+    result = await withTimeout(
+      () => generateImage(generationParams),
+      JOB_TIMEOUT.GENERATION,
+      "Image generation"
+    );
+  }
 
   const imagesList = get(result, "images", []);
   if (isEmpty(imagesList)) {

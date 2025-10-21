@@ -4,12 +4,18 @@ import { useParams } from "next/navigation";
 import { Bot, Menu } from "lucide-react";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { getMessages, sendMessage } from "@/lib/actions/messages";
+import { uploadImage, type Upload } from "@/lib/actions/uploads";
 import { MessageBubble } from "@/components/messages/message-bubble";
 import { AssistantMessage } from "@/components/messages/assistant-message";
 import { LoadingMessage } from "@/components/messages/loading-message";
 import { AnimatedInput } from "@/components/messages/animated-input";
-import { GenerationConfig } from "@/components/messages/generation-config";
-import type { GenerationParams } from "@/lib/constants/generation";
+import { ImagePreview } from "@/components/media/image-preview";
+import { ReferenceImageModal } from "@/components/media/reference-image-modal";
+import { GenerationModeSelector } from "@/components/messages/generation-mode-selector";
+import { NumberOfImagesSelector } from "@/components/messages/number-of-images-selector";
+import { AspectRatioSelector } from "@/components/messages/aspect-ratio-selector";
+import { GENERATION_MODES, GENERATION_MODE_LABELS, type GenerationParams, type GenerationMode, type AspectRatio } from "@/lib/constants/generation";
+import { X } from "lucide-react";
 import { useSocket } from "@/components/providers/socket-provider";
 import { joinThread, leaveThread } from "@/lib/socket";
 import BananaLoading from "@/components/ui/banana-loading";
@@ -42,12 +48,21 @@ export default function ThreadPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [shouldAnimate, setShouldAnimate] = useState(false);
-  const [generationConfig, setGenerationConfig] = useState<GenerationParams>(
-    {}
-  );
-  const [isConfigOpen, setIsConfigOpen] = useState(false);
+  const [generationConfig, setGenerationConfig] = useState<GenerationParams>({
+    numberOfImages: 1,
+    aspectRatio: "16:9"
+  });
+  
+  // Reference image state
+  const [referenceImage, setReferenceImage] = useState<Upload | null>(null);
+  const [generationMode, setGenerationMode] = useState<GenerationMode>(GENERATION_MODES.TEXT2IMG);
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [viewingReferenceImage, setViewingReferenceImage] = useState(false);
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const lastMessage = messages[messages.length - 1];
   const isProcessing =
@@ -191,8 +206,80 @@ export default function ThreadPage() {
     scrollToBottom();
   }, [messages]);
 
+  // Auto-switch mode when reference image changes
+  useEffect(() => {
+    if (referenceImage && generationMode === GENERATION_MODES.TEXT2IMG) {
+      setGenerationMode(GENERATION_MODES.STYLE_TRANSFER);
+    } else if (!referenceImage && generationMode !== GENERATION_MODES.TEXT2IMG) {
+      setGenerationMode(GENERATION_MODES.TEXT2IMG);
+    }
+  }, [referenceImage]);
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
+    if (!allowedTypes.includes(file.type)) {
+      alert("Invalid file type. Please upload JPEG, PNG, or WebP images.");
+      return;
+    }
+
+    // Validate file size (10MB max)
+    const maxSize = 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+      alert("File size exceeds 10MB limit.");
+      return;
+    }
+
+    setIsUploading(true);
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("purpose", "reference");
+    formData.append("threadId", threadId);
+
+    const result = await uploadImage(formData);
+    
+    if (result.success && result.data) {
+      setReferenceImage(result.data);
+    } else {
+      alert(result.error || "Failed to upload image");
+    }
+
+    setIsUploading(false);
+    
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleLibraryClick = () => {
+    setIsUploadModalOpen(true);
+  };
+
+  const handleSelectFromLibrary = (image: Upload) => {
+    setReferenceImage(image);
+  };
+
+  const handleRemoveReference = () => {
+    setReferenceImage(null);
+  };
+
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isSending || isProcessing) return;
+
+    // Validate reference image requirement
+    if (generationMode !== GENERATION_MODES.TEXT2IMG && !referenceImage) {
+      alert("Please select a reference image for this generation mode.");
+      return;
+    }
 
     const userMessage: Message = {
       id: `temp-${Date.now()}`,
@@ -213,9 +300,18 @@ export default function ThreadPage() {
         ? generationConfig
         : undefined;
 
-    const result = await sendMessage(threadId, userMessage.content, params);
+    const result = await sendMessage(
+      threadId,
+      userMessage.content,
+      params,
+      referenceImage?.id,
+      generationMode
+    );
 
     if (result.success && result.data) {
+      // Clear reference image after successful send
+      setReferenceImage(null);
+      
       // Fetch updated messages WITHOUT removing temp message first
       // This prevents flickering - the fetch will replace the entire list smoothly
       const messagesResult = await getMessages(threadId);
@@ -321,22 +417,108 @@ export default function ThreadPage() {
 
       <footer className="flex-shrink-0 border-t border-border p-6 flex items-center">
         <div className="max-w-4xl mx-auto w-full">
-          <GenerationConfig
-            value={generationConfig}
-            onChange={setGenerationConfig}
-            isOpen={isConfigOpen}
-            setIsOpen={setIsConfigOpen}
-          />
+          {/* Image Preview */}
+          {referenceImage && (
+            <ImagePreview
+              image={referenceImage}
+              generationMode={generationMode}
+              onRemove={handleRemoveReference}
+              onView={() => setViewingReferenceImage(true)}
+              className="mb-3"
+            />
+          )}
+
+          {/* Upload Indicator */}
+          {isUploading && (
+            <div className="mb-3 p-3 bg-primary/10 border border-primary rounded-lg text-sm text-primary">
+              Uploading image...
+            </div>
+          )}
+
           <AnimatedInput
             value={inputValue}
             onChange={setInputValue}
             onSubmit={handleSendMessage}
-            onFocus={() => setIsConfigOpen(false)}
-            disabled={isSending || isProcessing}
+            disabled={isSending || isProcessing || isUploading}
             placeholder="Describe the image you want to generate..."
+            onUploadClick={handleUploadClick}
+            onLibraryClick={handleLibraryClick}
+          />
+
+          {/* Generation Tools - Directly under input */}
+          <div className="mt-3 flex items-center gap-2 flex-wrap">
+            {/* Generation Mode Selector */}
+            <GenerationModeSelector
+              value={generationMode}
+              onChange={setGenerationMode}
+              hasReferenceImage={!!referenceImage}
+            />
+
+            {/* Generation Mode Chip */}
+            {generationMode !== GENERATION_MODES.TEXT2IMG && (
+              <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-primary/10 text-primary rounded-lg text-xs">
+                <span>{GENERATION_MODE_LABELS[generationMode]}</span>
+                <button
+                  onClick={() => setGenerationMode(GENERATION_MODES.TEXT2IMG)}
+                  className="hover:bg-primary/20 rounded p-0.5 transition-colors"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            )}
+
+            {/* Number of Images Selector */}
+            <NumberOfImagesSelector
+              value={generationConfig.numberOfImages}
+              onChange={(num) => setGenerationConfig({ ...generationConfig, numberOfImages: num })}
+            />
+
+            {/* Aspect Ratio Selector */}
+            <AspectRatioSelector
+              value={generationConfig.aspectRatio}
+              onChange={(ratio) => setGenerationConfig({ ...generationConfig, aspectRatio: ratio })}
+            />
+          </div>
+
+          {/* Hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            onChange={handleFileSelect}
+            className="hidden"
           />
         </div>
       </footer>
+
+      {/* Reference Image Library Modal */}
+      <ReferenceImageModal
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+        onSelect={handleSelectFromLibrary}
+        threadId={threadId}
+      />
+
+      {/* Reference Image Viewer */}
+      {viewingReferenceImage && referenceImage && (
+        <div
+          className="fixed inset-0 bg-black/90 flex items-center justify-center z-[70] p-4"
+          onClick={() => setViewingReferenceImage(false)}
+        >
+          <button
+            onClick={() => setViewingReferenceImage(false)}
+            className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
+          >
+            <X size={24} className="text-white" />
+          </button>
+          <img
+            src={referenceImage.publicUrl}
+            alt={referenceImage.title || "Reference"}
+            className="max-w-full max-h-full object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   );
 }

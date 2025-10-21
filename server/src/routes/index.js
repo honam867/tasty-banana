@@ -2,6 +2,7 @@ import auth from "./auth.route.js";
 import uploads from "./uploads.route.js";
 import threads from "./threads.route.js";
 import jobs from "./jobs.route.js";
+import users from "./users.route.js";
 import { ROUTES } from "../utils/routes.js";
 
 function router(app) {
@@ -9,6 +10,7 @@ function router(app) {
   app.use(`/api${ROUTES.UPLOADS}`, uploads);
   app.use(`/api${ROUTES.THREADS}`, threads);
   app.use(`/api${ROUTES.JOBS}`, jobs);
+  app.use("/api/users", users);
 }
 
 export default router;

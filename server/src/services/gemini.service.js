@@ -341,11 +341,240 @@ export const generateImage = async (params) => {
   }
 };
 
+/**
+ * Build image-to-image generation request for Vertex AI Imagen API
+ * @param {Object} params - Request parameters
+ * @param {string} params.prompt - Text prompt for image generation
+ * @param {string} params.referenceImageBase64 - Base64 encoded reference image
+ * @param {string} [params.mode='edit'] - Generation mode: 'edit', 'style_transfer', 'variation'
+ * @param {number} [params.numberOfImages=1] - Number of images to generate (1-8)
+ * @param {string} [params.aspectRatio] - Aspect ratio (optional for img2img)
+ * @param {number} [params.seed] - Random seed for reproducibility
+ * @param {string} [params.maskImageBase64] - Base64 encoded mask for inpainting (optional)
+ * @returns {Object} Formatted request object for Vertex AI
+ * @throws {Error} If required parameters are missing or invalid
+ */
+export const buildImageToImageRequest = (params) => {
+  const prompt = get(params, "prompt");
+  const referenceImageBase64 = get(params, "referenceImageBase64");
+  const mode = get(params, "mode", "edit");
+
+  if (isEmpty(prompt)) {
+    throw new Error("Prompt is required for image-to-image generation");
+  }
+
+  if (isEmpty(referenceImageBase64)) {
+    throw new Error("Reference image is required for image-to-image generation");
+  }
+
+  // Validate mode
+  const validModes = ["edit", "style_transfer", "variation"];
+  if (!validModes.includes(mode)) {
+    throw new Error(`Invalid mode: ${mode}. Must be one of: ${validModes.join(", ")}`);
+  }
+
+  // Validate and set defaults
+  const numberOfImages = get(params, "numberOfImages", 1);
+  if (numberOfImages < 1 || numberOfImages > 8) {
+    throw new Error("numberOfImages must be between 1 and 8");
+  }
+
+  const seed = get(params, "seed");
+  const maskImageBase64 = get(params, "maskImageBase64");
+
+  // Build instances - includes prompt and reference image
+  const instance = {
+    prompt,
+    image: {
+      bytesBase64Encoded: referenceImageBase64,
+    },
+  };
+
+  // Add mask if provided (for inpainting)
+  if (!isEmpty(maskImageBase64)) {
+    instance.mask = {
+      bytesBase64Encoded: maskImageBase64,
+    };
+  }
+
+  const instances = [instance];
+
+  // Build parameters
+  const requestParams = {
+    sampleCount: numberOfImages,
+    mode, // 'edit', 'style_transfer', or 'variation'
+  };
+
+  // Add optional aspect ratio
+  const aspectRatio = get(params, "aspectRatio");
+  if (!isEmpty(aspectRatio)) {
+    const validAspectRatios = ["1:1", "9:16", "16:9", "4:3", "3:4"];
+    if (!validAspectRatios.includes(aspectRatio)) {
+      throw new Error(`aspectRatio must be one of: ${validAspectRatios.join(", ")}`);
+    }
+    requestParams.aspectRatio = aspectRatio;
+  }
+
+  // Add optional seed
+  if (!isNil(seed)) {
+    requestParams.seed = parseInt(seed, 10);
+  }
+
+  const request = {
+    instances,
+    parameters: requestParams,
+  };
+
+  return request;
+};
+
+/**
+ * Build upscale request for Vertex AI Imagen API
+ * @param {Object} params - Request parameters
+ * @param {string} params.referenceImageBase64 - Base64 encoded image to upscale
+ * @param {number} [params.upscaleFactor=2] - Upscale factor (2 or 4)
+ * @returns {Object} Formatted request object for Vertex AI
+ * @throws {Error} If required parameters are missing or invalid
+ */
+export const buildUpscaleRequest = (params) => {
+  const referenceImageBase64 = get(params, "referenceImageBase64");
+
+  if (isEmpty(referenceImageBase64)) {
+    throw new Error("Reference image is required for upscaling");
+  }
+
+  const upscaleFactor = get(params, "upscaleFactor", 2);
+  if (![2, 4].includes(upscaleFactor)) {
+    throw new Error("upscaleFactor must be 2 or 4");
+  }
+
+  const instances = [
+    {
+      image: {
+        bytesBase64Encoded: referenceImageBase64,
+      },
+    },
+  ];
+
+  const requestParams = {
+    upscaleFactor,
+  };
+
+  const request = {
+    instances,
+    parameters: requestParams,
+  };
+
+  return request;
+};
+
+/**
+ * Generate images with reference image (image-to-image)
+ * @param {Object} params - Image generation parameters
+ * @param {string} params.prompt - Text prompt for image generation
+ * @param {string} params.referenceImageBase64 - Base64 encoded reference image
+ * @param {string} [params.mode='edit'] - Generation mode
+ * @param {number} [params.numberOfImages=1] - Number of images to generate
+ * @param {string} [params.aspectRatio] - Aspect ratio
+ * @param {number} [params.seed] - Random seed
+ * @param {string} [params.maskImageBase64] - Base64 encoded mask (for inpainting)
+ * @returns {Promise<Object>} Generated images data
+ * @throws {Error} Mapped error if generation fails
+ */
+export const generateImageWithReference = async (params) => {
+  try {
+    console.log("🎨 Starting image-to-image generation...");
+    console.log(`   Mode: ${get(params, "mode", "edit")}`);
+
+    // Get authenticated client
+    const client = await getAuthenticatedClient();
+
+    // Build request
+    const request = buildImageToImageRequest(params);
+    const modelPath = getModelResourceName();
+
+    // Prepare prediction request with proper protobuf encoding
+    const predictionRequest = {
+      endpoint: modelPath,
+      instances: request.instances.map((instance) => toValue(instance)),
+      parameters: toValue(request.parameters),
+    };
+
+    console.log(`   Model: ${modelPath}`);
+    console.log(`   Images requested: ${get(request, "parameters.sampleCount", 1)}`);
+
+    // Call Vertex AI predict
+    const [response] = await client.predict(predictionRequest);
+
+    // Parse response
+    const result = parseImageResponse(response);
+    return result;
+  } catch (error) {
+    const mappedError = mapGeminiError(error);
+    console.error("❌ Image-to-image generation failed:");
+    console.error(`   Code: ${mappedError.code}`);
+    console.error(`   Message: ${mappedError.message}`);
+    console.error(`   Original: ${mappedError.originalError}`);
+
+    throw mappedError;
+  }
+};
+
+/**
+ * Upscale an image
+ * @param {Object} params - Upscale parameters
+ * @param {string} params.referenceImageBase64 - Base64 encoded image to upscale
+ * @param {number} [params.upscaleFactor=2] - Upscale factor
+ * @returns {Promise<Object>} Upscaled image data
+ * @throws {Error} Mapped error if upscaling fails
+ */
+export const upscaleImage = async (params) => {
+  try {
+    console.log("🎨 Starting image upscaling...");
+    console.log(`   Upscale factor: ${get(params, "upscaleFactor", 2)}x`);
+
+    // Get authenticated client
+    const client = await getAuthenticatedClient();
+
+    // Build request
+    const request = buildUpscaleRequest(params);
+    const modelPath = getModelResourceName();
+
+    // Prepare prediction request with proper protobuf encoding
+    const predictionRequest = {
+      endpoint: modelPath,
+      instances: request.instances.map((instance) => toValue(instance)),
+      parameters: toValue(request.parameters),
+    };
+
+    console.log(`   Model: ${modelPath}`);
+
+    // Call Vertex AI predict
+    const [response] = await client.predict(predictionRequest);
+
+    // Parse response
+    const result = parseImageResponse(response);
+    return result;
+  } catch (error) {
+    const mappedError = mapGeminiError(error);
+    console.error("❌ Image upscaling failed:");
+    console.error(`   Code: ${mappedError.code}`);
+    console.error(`   Message: ${mappedError.message}`);
+    console.error(`   Original: ${mappedError.originalError}`);
+
+    throw mappedError;
+  }
+};
+
 export default {
   initGeminiClient,
   getAuthenticatedClient,
   parseImageResponse,
   mapGeminiError,
   generateImage,
+  generateImageWithReference,
+  upscaleImage,
+  buildImageToImageRequest,
+  buildUpscaleRequest,
   resetGeminiClient,
 };

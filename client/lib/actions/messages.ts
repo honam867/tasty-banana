@@ -136,7 +136,9 @@ interface GenerationParams {
 export async function sendMessage(
   threadId: string,
   content: string,
-  generationParams?: GenerationParams
+  generationParams?: GenerationParams,
+  referenceImageId?: string,
+  generationMode?: string
 ) {
   try {
     const token = await getAuthToken();
@@ -154,6 +156,14 @@ export async function sendMessage(
 
     if (generationParams && (generationParams.numberOfImages || generationParams.aspectRatio)) {
       body.generationParams = generationParams;
+    }
+
+    if (referenceImageId) {
+      body.referenceImageId = referenceImageId;
+    }
+
+    if (generationMode) {
+      body.generationMode = generationMode;
     }
 
     const response = await fetch(

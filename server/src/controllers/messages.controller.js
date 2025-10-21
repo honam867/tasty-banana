@@ -5,9 +5,10 @@ import { createMessage, findMessagesByThreadIdWithPagination } from "../services
 import { isThreadOwnedByUser, findThreadById, updateThreadName } from "../services/threads.service.js";
 import { getDefaultProvider } from "../services/providers.service.js";
 import { createJob, processJob } from "../services/jobs.service.js";
-import { HTTP_STATUS, JOB_TYPE, IMAGE_GENERATION_DEFAULTS, MESSAGE_ROLE } from "../utils/constant.js";
+import { HTTP_STATUS, JOB_TYPE, IMAGE_GENERATION_DEFAULTS, MESSAGE_ROLE, GENERATION_MODE, VALID_GENERATION_MODES } from "../utils/constant.js";
 import { sendError, sendWarning } from "../utils/response.js";
 import { validateGenerationParams } from "../utils/generationParams.validation.js";
+import { findUploadById, isUploadOwnedByUser } from "../services/uploads.service.js";
 
 /**
  * POST /api/threads/:threadId/messages - Create a new message in a thread
@@ -17,6 +18,10 @@ import { validateGenerationParams } from "../utils/generationParams.validation.j
  * - numberOfImages: 1-8 (default: 1)
  * - aspectRatio: "1:1" | "9:16" | "16:9" | "4:3" | "3:4" (default: "1:1")
  * - seed: number (optional)
+ * 
+ * Request body also accepts:
+ * - referenceImageId: UUID of uploaded reference image (optional)
+ * - generationMode: "text2img" | "style_transfer" | "variation" | "edit" | "upscale" (default: "text2img")
  * 
  * Note: personGeneration and enablePromptRewriting are fixed defaults and not accepted from requests
  * 
@@ -30,6 +35,8 @@ export const createThreadMessage = async (req, res) => {
     const content = get(req, "body.content");
     const role = get(req, "body.role");
     const generationParams = get(req, "body.generationParams");
+    const referenceImageId = get(req, "body.referenceImageId");
+    const generationMode = get(req, "body.generationMode", GENERATION_MODE.TEXT2IMG);
     
     // 1. Validate authentication
     if (isNil(userId)) {
@@ -82,6 +89,60 @@ export const createThreadMessage = async (req, res) => {
       ...paramValidation.sanitized,
     };
 
+    // 4.1. Validate generation mode
+    if (!VALID_GENERATION_MODES.includes(generationMode)) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({
+        success: false,
+        status: 400,
+        code: "INVALID_GENERATION_MODE",
+        message: "Invalid generation mode",
+        errors: [`Generation mode must be one of: ${VALID_GENERATION_MODES.join(", ")}`],
+      });
+    }
+
+    // 4.2. Validate reference image if provided
+    if (!isNil(referenceImageId)) {
+      // Check if upload exists and user owns it
+      const referenceUpload = await findUploadById(referenceImageId);
+      
+      if (isNil(referenceUpload)) {
+        return res.status(HTTP_STATUS.NOT_FOUND).json({
+          success: false,
+          status: 404,
+          message: "Reference image not found",
+        });
+      }
+
+      const ownsUpload = await isUploadOwnedByUser(referenceImageId, userId);
+      
+      if (!ownsUpload) {
+        return res.status(HTTP_STATUS.UNAUTHORIZED).json({
+          success: false,
+          status: 403,
+          message: "You do not have permission to use this reference image",
+        });
+      }
+
+      // Validate purpose is 'reference'
+      if (get(referenceUpload, "purpose") !== "reference") {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          status: 400,
+          message: "Upload is not a reference image",
+        });
+      }
+    }
+
+    // 4.3. Validate that reference image is required for non-text2img modes
+    if (generationMode !== GENERATION_MODE.TEXT2IMG && isNil(referenceImageId)) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({
+        success: false,
+        status: 400,
+        code: "MISSING_REFERENCE_IMAGE",
+        message: `Reference image is required for generation mode: ${generationMode}`,
+      });
+    }
+
     // 5. Check thread ownership
     const isOwner = await isThreadOwnedByUser(threadId, userId);
     
@@ -124,15 +185,34 @@ export const createThreadMessage = async (req, res) => {
     }
 
     // 8. Create job with status 'queued' and merged generation parameters
+    // Determine job type based on generation mode
+    const jobTypeMap = {
+      [GENERATION_MODE.TEXT2IMG]: JOB_TYPE.TEXT2IMG,
+      [GENERATION_MODE.STYLE_TRANSFER]: JOB_TYPE.IMG2IMG,
+      [GENERATION_MODE.VARIATION]: JOB_TYPE.VARIATION,
+      [GENERATION_MODE.EDIT]: JOB_TYPE.IMG2IMG,
+      [GENERATION_MODE.UPSCALE]: JOB_TYPE.UPSCALE,
+    };
+    
+    const jobType = jobTypeMap[generationMode] || JOB_TYPE.TEXT2IMG;
+
+    const jobParameters = {
+      prompt: content,
+      ...finalGenerationParams,
+      generationMode,
+    };
+
+    // Add reference image if provided
+    if (!isNil(referenceImageId)) {
+      jobParameters.referenceImageId = referenceImageId;
+    }
+
     const job = await createJob({
       messageId: get(userMessage, "id"),
       providerId: get(provider, "id"),
-      jobType: JOB_TYPE.TEXT2IMG,
+      jobType,
       status: "queued",
-      parameters: {
-        prompt: content,
-        ...finalGenerationParams,
-      },
+      parameters: jobParameters,
     });
 
     if (isNil(job)) {

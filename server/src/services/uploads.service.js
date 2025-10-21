@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { db } from "../db/drizzle.js";
 import { uploads } from "../db/schema.js";
 import lodash from "lodash";
@@ -30,21 +30,38 @@ export const createUpload = async (uploadData) => {
  * @returns {Promise<Object|null>} Upload object or null
  */
 export const findUploadById = async (id) => {
-  const result = await db.select().from(uploads).where(eq(uploads.id, id)).limit(1);
+  const result = await db
+    .select()
+    .from(uploads)
+    .where(eq(uploads.id, id))
+    .limit(1);
   return get(result, "[0]", null);
 };
 
 /**
- * Find uploads by user ID
+ * Find uploads by user ID with optional purpose filter
  * @param {string} userId - User ID (UUID)
  * @param {number} limit - Maximum number of results (default: 50)
+ * @param {string} [purpose] - Optional purpose filter (reference, attachment, etc.)
  * @returns {Promise<Array>} Array of upload records
  */
-export const findUploadsByUserId = async (userId, limit = 50) => {
+export const findUploadsByUserId = async (
+  userId,
+  limit = 50,
+  purpose = null
+) => {
+  const { and } = await import("drizzle-orm");
+
+  // Build WHERE conditions
+  const conditions = [eq(uploads.userId, userId)];
+  if (purpose) {
+    conditions.push(eq(uploads.purpose, purpose));
+  }
+
   const result = await db
     .select()
     .from(uploads)
-    .where(eq(uploads.userId, userId))
+    .where(and(...conditions))
     .orderBy(uploads.createdAt)
     .limit(limit);
   return result || [];
@@ -57,38 +74,10 @@ export const findUploadsByUserId = async (userId, limit = 50) => {
  * @returns {Promise<Array>} Array of reference image upload records
  */
 export const findReferenceImagesByUserId = async (userId, limit = 50) => {
-  const { and } = await import("drizzle-orm");
   const result = await db
     .select()
     .from(uploads)
-    .where(
-      and(
-        eq(uploads.userId, userId),
-        eq(uploads.purpose, "reference")
-      )
-    )
-    .orderBy(uploads.createdAt)
-    .limit(limit);
-  return result || [];
-};
-
-/**
- * Find reference images by thread ID
- * @param {string} threadId - Thread ID (UUID)
- * @param {number} limit - Maximum number of results (default: 50)
- * @returns {Promise<Array>} Array of reference image upload records
- */
-export const findReferenceImagesByThreadId = async (threadId, limit = 50) => {
-  const { and } = await import("drizzle-orm");
-  const result = await db
-    .select()
-    .from(uploads)
-    .where(
-      and(
-        eq(uploads.threadId, threadId),
-        eq(uploads.purpose, "reference")
-      )
-    )
+    .where(and(eq(uploads.userId, userId), eq(uploads.purpose, "reference")))
     .orderBy(uploads.createdAt)
     .limit(limit);
   return result || [];
@@ -118,5 +107,3 @@ export const deleteUpload = async (uploadId) => {
     .returning();
   return get(result, "[0]", null);
 };
-
-

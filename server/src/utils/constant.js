@@ -164,3 +164,33 @@ export const MESSAGE_STATUS = {
   SUCCEEDED: "succeeded",
   FAILED: "failed",
 };
+
+// Generation modes for image-to-image operations
+export const GENERATION_MODE = {
+  TEXT2IMG: "text2img",
+  STYLE_TRANSFER: "style_transfer",
+  VARIATION: "variation",
+  EDIT: "edit",
+  UPSCALE: "upscale",
+};
+
+// Valid generation modes array
+export const VALID_GENERATION_MODES = Object.values(GENERATION_MODE);
+
+// File purpose types
+export const FILE_PURPOSE = {
+  INIT: "init",
+  MASK: "mask",
+  REFERENCE: "reference",
+  ATTACHMENT: "attachment",
+};
+
+// Valid file purposes array
+export const VALID_FILE_PURPOSES = Object.values(FILE_PURPOSE);
+
+// Image upload constraints
+export const IMAGE_UPLOAD_CONSTRAINTS = {
+  maxSizeBytes: 10 * 1024 * 1024, // 10MB
+  allowedMimeTypes: ["image/jpeg", "image/png", "image/webp"],
+  allowedExtensions: [".jpg", ".jpeg", ".png", ".webp"],
+};

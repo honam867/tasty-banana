@@ -16,10 +16,12 @@ export const recoverStuckJobs = async () => {
   console.log("🔄 Checking for stuck jobs from previous server instance...");
   
   try {
-    // Find all stuck jobs WITH their linked user messages
+    // Find all stuck jobs WITH their linked user messages in a SINGLE query
     // Scenario 1: Jobs stuck in "processing" (server crashed during processing)
     // Scenario 2: Jobs stuck in "queued" (server crashed before processing started)
-    const stuckJobsWithMessages = await db
+    const { or } = await import("drizzle-orm");
+    
+    const allStuckJobs = await db
       .select({
         jobId: jobs.id,
         jobStatus: jobs.status,
@@ -30,33 +32,25 @@ export const recoverStuckJobs = async () => {
       })
       .from(jobs)
       .innerJoin(messages, eq(jobs.messageId, messages.id))
-      .where(eq(jobs.status, JOB_STATUS.PROCESSING));
-
-    // Also find jobs that are "queued" but never started (pending for too long)
-    // These are jobs created but processJob never ran (server crashed right after job creation)
-    const queuedJobsWithMessages = await db
-      .select({
-        jobId: jobs.id,
-        jobStatus: jobs.status,
-        messageId: messages.id,
-        messageStatus: messages.status,
-        threadId: messages.threadId,
-        jobCreatedAt: jobs.createdAt,
-      })
-      .from(jobs)
-      .innerJoin(messages, eq(jobs.messageId, messages.id))
-      .where(eq(jobs.status, JOB_STATUS.QUEUED));
-
-    const allStuckJobs = [...stuckJobsWithMessages, ...queuedJobsWithMessages];
+      .where(
+        or(
+          eq(jobs.status, JOB_STATUS.PROCESSING),
+          eq(jobs.status, JOB_STATUS.QUEUED)
+        )
+      );
 
     if (allStuckJobs.length === 0) {
       console.log("✅ No stuck jobs found");
       return { jobs: [], messages: [] };
     }
 
+    // Count by status for logging
+    const processingCount = allStuckJobs.filter(j => j.jobStatus === JOB_STATUS.PROCESSING).length;
+    const queuedCount = allStuckJobs.filter(j => j.jobStatus === JOB_STATUS.QUEUED).length;
+
     console.log(`Found ${allStuckJobs.length} stuck job(s) with linked messages`);
-    console.log(`   - ${stuckJobsWithMessages.length} in "processing" state`);
-    console.log(`   - ${queuedJobsWithMessages.length} in "queued" state`);
+    console.log(`   - ${processingCount} in "processing" state`);
+    console.log(`   - ${queuedCount} in "queued" state`);
     console.log(`   Marking all as failed due to server restart...`);
 
     // Mark each stuck job and its linked message as "failed"

@@ -1,7 +1,15 @@
 import express from "express";
 import { verifyToken } from "../middlewares/tokenHandler.js";
-import { createNewThread, listThreads, getThread, deleteThreadById } from "../controllers/threads.controller.js";
-import { createThreadMessage, listThreadMessages } from "../controllers/messages.controller.js";
+import {
+  createNewThread,
+  listThreads,
+  getThread,
+  deleteThreadById,
+} from "../controllers/threads.controller.js";
+import {
+  createThreadMessage,
+  listThreadMessages,
+} from "../controllers/messages.controller.js";
 import { ROUTES } from "../utils/routes.js";
 
 const router = express.Router();
@@ -28,4 +36,3 @@ router.post(ROUTES.THREAD_MESSAGES, createThreadMessage);
 router.get(ROUTES.THREAD_MESSAGES, listThreadMessages);
 
 export default router;
-

@@ -148,27 +148,19 @@ export const getUserUploads = async (req, res) => {
       });
     }
 
-    // Get uploads from service
-    let uploads;
-    if (purpose) {
-      // If purpose is specified, filter by purpose
-      if (!VALID_FILE_PURPOSES.includes(purpose)) {
-        return res.status(HTTP_STATUS.BAD_REQUEST).json({
-          success: false,
-          status: HTTP_STATUS.BAD_REQUEST,
-          message: `Invalid purpose. Must be one of: ${VALID_FILE_PURPOSES.join(
-            ", "
-          )}`,
-        });
-      }
-
-      // Get all uploads and filter by purpose (since we don't have a specific service method for this)
-      const allUploads = await findUploadsByUserId(userId, 100);
-      uploads = allUploads.filter((upload) => upload.purpose === purpose);
-    } else {
-      // Get all uploads
-      uploads = await findUploadsByUserId(userId, limit);
+    // Validate purpose if provided
+    if (purpose && !VALID_FILE_PURPOSES.includes(purpose)) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({
+        success: false,
+        status: HTTP_STATUS.BAD_REQUEST,
+        message: `Invalid purpose. Must be one of: ${VALID_FILE_PURPOSES.join(
+          ", "
+        )}`,
+      });
     }
+
+    // Get uploads from service with database-level filtering
+    const uploads = await findUploadsByUserId(userId, limit, purpose);
 
     return res.status(HTTP_STATUS.SUCCESS).json({
       success: true,

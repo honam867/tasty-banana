@@ -3,13 +3,17 @@
 import { useState, useEffect, useRef } from "react";
 import { Settings, Square, RectangleHorizontal, RectangleVertical, ChevronDown, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { IMAGE_GENERATION_CONSTRAINTS, type AspectRatio, type GenerationParams } from "@/lib/constants/generation";
+import { IMAGE_GENERATION_CONSTRAINTS, GENERATION_MODES, type AspectRatio, type GenerationParams, type GenerationMode } from "@/lib/constants/generation";
+import { GenerationModeSelector } from "./generation-mode-selector";
 
 interface GenerationConfigProps {
   value: GenerationParams;
   onChange: (config: GenerationParams) => void;
   isOpen: boolean;
   setIsOpen: (open: boolean) => void;
+  generationMode?: GenerationMode;
+  onGenerationModeChange?: (mode: GenerationMode) => void;
+  hasReferenceImage?: boolean;
 }
 
 const aspectRatioIcons: Record<AspectRatio, { icon: React.ReactNode; label: string }> = {
@@ -43,7 +47,15 @@ const aspectRatioIcons: Record<AspectRatio, { icon: React.ReactNode; label: stri
   },
 };
 
-export function GenerationConfig({ value, onChange, isOpen, setIsOpen }: GenerationConfigProps) {
+export function GenerationConfig({ 
+  value, 
+  onChange, 
+  isOpen, 
+  setIsOpen,
+  generationMode = GENERATION_MODES.TEXT2IMG,
+  onGenerationModeChange,
+  hasReferenceImage = false,
+}: GenerationConfigProps) {
   const handleAspectRatioChange = (ratio: AspectRatio) => {
     onChange({ ...value, aspectRatio: ratio });
   };
@@ -64,22 +76,23 @@ export function GenerationConfig({ value, onChange, isOpen, setIsOpen }: Generat
     onChange(newValue);
   };
 
-  const hasConfig = value.aspectRatio || value.numberOfImages;
+  const hasConfig = value.aspectRatio || value.numberOfImages || hasReferenceImage;
 
   return (
     <div className="mb-3">
       <div className="flex items-center gap-2 flex-wrap">
+        {/* Settings Button */}
         <button
           onClick={() => setIsOpen(!isOpen)}
           className={cn(
             "flex items-center gap-2 px-3 py-2 rounded-lg transition-all text-sm",
-            isOpen || hasConfig
+            isOpen || (value.aspectRatio || value.numberOfImages)
               ? "bg-primary/10 text-primary"
               : "bg-surface-2 text-text-dim hover:bg-surface hover:text-text"
           )}
         >
           <Settings size={16} />
-          <span>Generation Settings</span>
+          <span>Settings</span>
           <ChevronDown
             size={16}
             className={cn("transition-transform duration-200", isOpen && "rotate-180")}

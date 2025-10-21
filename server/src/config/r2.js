@@ -1,7 +1,7 @@
 import dotenv from "dotenv";
 dotenv.config();
 
-import { S3Client, HeadBucketCommand } from "@aws-sdk/client-s3";
+import { S3Client, HeadBucketCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
 import lodash from "lodash";
 const { get, isEmpty } = lodash;
@@ -181,12 +181,48 @@ export const testR2Connection = async () => {
   }
 };
 
+/**
+ * Delete a file from R2 storage
+ * @param {Object} params - Delete parameters
+ * @param {string} params.key - Storage key/path of the file to delete
+ * @returns {Promise<Object>} Delete result
+ */
+export const deleteFromR2 = async ({ key }) => {
+  const client = getR2Client();
+  const bucket = getR2Bucket();
+
+  try {
+    const command = new DeleteObjectCommand({
+      Bucket: bucket,
+      Key: key
+    });
+
+    const result = await client.send(command);
+
+    return {
+      success: true,
+      key,
+      deleted: true,
+      etag: result.ETag
+    };
+  } catch (error) {
+    console.error("R2 delete error:", error);
+    return {
+      success: false,
+      key,
+      deleted: false,
+      error: get(error, "message", "Unknown error")
+    };
+  }
+};
+
 export default {
   getR2Client,
   getR2Bucket,
   getR2PublicBaseUrl,
   generatePublicUrl,
   uploadToR2,
+  deleteFromR2,
   testR2Connection
 };
 
