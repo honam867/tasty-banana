@@ -31,24 +31,6 @@ export function AnimatedInput({
   const [showMenu, setShowMenu] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const MAX_TEXTAREA_HEIGHT = 200;
-
-  const adjustTextareaHeight = () => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-
-    textarea.style.height = "auto";
-    textarea.style.minHeight = "48px";
-    textarea.style.maxHeight = `${MAX_TEXTAREA_HEIGHT}px`;
-    const nextHeight = Math.min(textarea.scrollHeight, MAX_TEXTAREA_HEIGHT);
-    textarea.style.height = `${nextHeight}px`;
-    textarea.style.overflowY =
-      textarea.scrollHeight > MAX_TEXTAREA_HEIGHT ? "auto" : "hidden";
-  };
-
-  useEffect(() => {
-    adjustTextareaHeight();
-  }, [value]);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -69,19 +51,12 @@ export function AnimatedInput({
 
   const handleFocus = () => {
     setIsFocused(true);
-    adjustTextareaHeight();
-    setShowMenu(false); // Close menu when focusing input
+    setShowMenu(false);
     onFocus?.();
   };
 
   const handleBlur = () => {
     setIsFocused(false);
-    if (!value.trim()) {
-      const textarea = textareaRef.current;
-      if (textarea) {
-        textarea.style.height = "48px";
-      }
-    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -163,13 +138,17 @@ export function AnimatedInput({
         )}
 
         {/* Textarea Container */}
-        <div className="flex-1">
+        <div className="flex-1 w-full relative">
           <textarea
             ref={textareaRef}
             value={value}
             onChange={(e) => {
-              onChange(e.target.value);
-              adjustTextareaHeight();
+              const target = e.target;
+              onChange(target.value);
+              
+              // Auto-adjust height
+              target.style.height = 'auto';
+              target.style.height = target.scrollHeight + 'px';
             }}
             onKeyDown={handleKeyDown}
             onFocus={handleFocus}
@@ -177,20 +156,15 @@ export function AnimatedInput({
             disabled={disabled}
             placeholder={placeholder}
             rows={1}
+            style={{ minHeight: '48px', maxHeight: '200px' }}
             className={cn(
-              "w-full px-4 pr-12 bg-surface-2 border-2 rounded-xl resize-none overflow-y-auto",
-              "focus:outline-none transition-all duration-300",
-              "placeholder:text-text-dim text-base leading-6",
+              "w-full bg-surface-2 border-2 rounded-xl resize-none",
+              "focus:outline-none transition-colors duration-200",
+              "placeholder:text-text-dim text-base py-3 px-4 pr-12",
+              "overflow-y-auto scrollbar-hide",
               disabled && "opacity-50 cursor-not-allowed",
               isFocused ? "border-primary" : "border-transparent"
             )}
-            style={{
-              height: "48px",
-              maxHeight: `${MAX_TEXTAREA_HEIGHT}px`,
-              paddingTop: "14px",
-              paddingBottom: "14px",
-              fontSize: "16px",
-            }}
           />
           <button
             onClick={onSubmit}

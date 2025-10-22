@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Background3D } from "@/components/ui/background-3d";
+import BananaLoading from "@/components/ui/banana-loading";
 import Link from "next/link";
 
 export default function LoginPage() {
@@ -128,7 +129,7 @@ export default function LoginPage() {
               className="w-full"
               disabled={isLoading}
             >
-              {isLoading ? "Signing in..." : "Sign In"}
+              {isLoading ? <BananaLoading className="mx-auto" /> : "Sign In"}
             </Button>
 
             <p className="text-sm text-center text-text-secondary">

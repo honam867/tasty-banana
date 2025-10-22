@@ -255,7 +255,7 @@ export function MediaSidebar({
           >
             {isLoading ? (
               <div className="text-center text-text-dim py-4">
-                <BananaLoading speed={4} />
+                <BananaLoading />
               </div>
             ) : threads.length === 0 ? (
               <div className="text-center text-text-dim py-4 px-2 text-sm">

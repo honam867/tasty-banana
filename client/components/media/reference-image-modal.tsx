@@ -6,8 +6,8 @@ import {
   Upload as UploadIcon,
   Trash2,
   Image as ImageIcon,
-  Loader2,
 } from "lucide-react";
+import BananaLoading from "@/components/ui/banana-loading";
 import { cn } from "@/lib/utils";
 import {
   getUserReferenceImages,
@@ -173,10 +173,7 @@ export function ReferenceImageModal({
               )}
             >
               {isUploading ? (
-                <>
-                  <Loader2 size={32} className="text-primary animate-spin" />
-                  <p className="text-sm text-text-dim">Uploading...</p>
-                </>
+                <BananaLoading />
               ) : (
                 <>
                   <UploadIcon size={32} className="text-text-dim" />
@@ -194,11 +191,7 @@ export function ReferenceImageModal({
           {/* Images Grid */}
           {isLoading ? (
             <div className="text-center py-12">
-              <Loader2
-                size={32}
-                className="text-primary animate-spin mx-auto mb-3"
-              />
-              <p className="text-sm text-text-dim">Loading images...</p>
+              <BananaLoading className="mx-auto" />
             </div>
           ) : images.length === 0 ? (
             <div className="text-center py-12">

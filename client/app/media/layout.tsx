@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/providers/auth-provider";
 import { MediaSidebar } from "@/components/media/media-sidebar";
+import BananaLoading from "@/components/ui/banana-loading";
 import { cn } from "@/lib/utils";
 
 export default function MediaLayout({
@@ -35,7 +36,7 @@ export default function MediaLayout({
   if (isLoading) {
     return (
       <div className="h-screen flex items-center justify-center">
-        <p className="text-text-dim">Loading...</p>
+        <BananaLoading />
       </div>
     );
   }

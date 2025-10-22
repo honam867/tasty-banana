@@ -16,14 +16,7 @@ export function LoadingMessage() {
       </div>
 
       <div className="flex-1 space-y-3">
-        <BananaLoading 
-          size={28} 
-          speed={0.8} 
-          gap={12} 
-          height={80}
-          className="w-full max-w-md"
-          ariaLabel="Generating your images..."
-        />
+        <BananaLoading ariaLabel="Generating your images..." />
       </div>
     </motion.div>
   );

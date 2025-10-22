@@ -360,7 +360,7 @@ export default function ThreadPage() {
         <div className="max-w-4xl mx-auto">
           {isLoading && messages.length === 0 ? (
             <div className="text-center py-12">
-              <BananaLoading speed={4} />
+              <BananaLoading />
             </div>
           ) : messages.length === 0 ? (
             <div className="text-center py-12">
@@ -400,13 +400,7 @@ export default function ThreadPage() {
                   <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center">
                     <span className="text-2xl">🍌</span>
                   </div>
-                  <div className="bg-surface-2 px-4 py-3 rounded-2xl rounded-tl-none">
-                    <div className="flex gap-2">
-                      <div className="w-2 h-2 bg-primary rounded-full animate-bounce" />
-                      <div className="w-2 h-2 bg-primary rounded-full animate-bounce [animation-delay:0.2s]" />
-                      <div className="w-2 h-2 bg-primary rounded-full animate-bounce [animation-delay:0.4s]" />
-                    </div>
-                  </div>
+                  <BananaLoading />
                 </div>
               )}
               <div ref={messagesEndRef} />
@@ -415,7 +409,7 @@ export default function ThreadPage() {
         </div>
       </div>
 
-      <footer className="flex-shrink-0 border-t border-border p-6 flex items-center">
+      <footer className="flex-shrink-0 border-t border-border py-3.5 px-6 flex items-center">
         <div className="max-w-4xl mx-auto w-full">
           {/* Image Preview */}
           {referenceImage && (
