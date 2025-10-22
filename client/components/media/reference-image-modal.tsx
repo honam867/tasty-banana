@@ -1,9 +1,20 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { X, Upload as UploadIcon, Trash2, Image as ImageIcon, Loader2 } from "lucide-react";
+import {
+  X,
+  Upload as UploadIcon,
+  Trash2,
+  Image as ImageIcon,
+  Loader2,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getUserReferenceImages, uploadImage, deleteUpload, type Upload } from "@/lib/actions/uploads";
+import {
+  getUserReferenceImages,
+  uploadImage,
+  deleteUpload,
+  type Upload,
+} from "@/lib/actions/uploads";
 import { Button } from "@/components/ui/button";
 
 interface ReferenceImageModalProps {
@@ -69,7 +80,7 @@ export function ReferenceImageModal({
     }
 
     const result = await uploadImage(formData);
-    
+
     if (result.success && result.data) {
       // Add to list
       setImages([result.data, ...images]);
@@ -80,7 +91,7 @@ export function ReferenceImageModal({
     }
 
     setIsUploading(false);
-    
+
     // Reset file input
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -89,13 +100,13 @@ export function ReferenceImageModal({
 
   const handleDelete = async (imageId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    
+
     if (!confirm("Are you sure you want to delete this image?")) {
       return;
     }
 
     const result = await deleteUpload(imageId);
-    
+
     if (result.success) {
       setImages(images.filter((img) => img.id !== imageId));
       if (selectedImageId === imageId) {
@@ -125,7 +136,9 @@ export function ReferenceImageModal({
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-border">
           <div>
-            <h2 className="text-xl font-heading font-bold">Reference Image Library</h2>
+            <h2 className="text-xl font-heading font-bold">
+              Reference Image Library
+            </h2>
             <p className="text-sm text-text-dim mt-1">
               Select or upload a reference image
             </p>
@@ -181,12 +194,18 @@ export function ReferenceImageModal({
           {/* Images Grid */}
           {isLoading ? (
             <div className="text-center py-12">
-              <Loader2 size={32} className="text-primary animate-spin mx-auto mb-3" />
+              <Loader2
+                size={32}
+                className="text-primary animate-spin mx-auto mb-3"
+              />
               <p className="text-sm text-text-dim">Loading images...</p>
             </div>
           ) : images.length === 0 ? (
             <div className="text-center py-12">
-              <ImageIcon size={48} className="text-text-dim mx-auto mb-3 opacity-50" />
+              <ImageIcon
+                size={48}
+                className="text-text-dim mx-auto mb-3 opacity-50"
+              />
               <p className="text-sm text-text-dim">
                 No reference images yet. Upload one to get started!
               </p>
@@ -251,13 +270,13 @@ export function ReferenceImageModal({
             {images.length} {images.length === 1 ? "image" : "images"}
           </p>
           <div className="flex gap-3">
-            <Button variant="outline" onClick={onClose}>
-              Cancel
-            </Button>
+            <Button onClick={onClose}>Cancel</Button>
             {selectedImageId && (
               <Button
                 onClick={() => {
-                  const selected = images.find((img) => img.id === selectedImageId);
+                  const selected = images.find(
+                    (img) => img.id === selectedImageId
+                  );
                   if (selected) handleSelect(selected);
                 }}
               >
